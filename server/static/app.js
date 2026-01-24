@@ -72,6 +72,18 @@ function formatTimestamp(value) {
   return date.toLocaleString();
 }
 
+function formatEta(seconds) {
+  if (seconds === null || seconds === undefined) return "-";
+  const total = Math.max(0, Math.floor(seconds));
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  if (h > 0) {
+    return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+  }
+  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
+
 function minutesSince(isoString) {
   if (!isoString) return null;
   const time = new Date(isoString).getTime();
@@ -361,7 +373,7 @@ async function loadJobs() {
   const jobs = await fetchJson("/api/jobs");
   jobsEl.innerHTML = "";
   if (!jobs.length) {
-    jobsEl.innerHTML = "<tr><td colspan=\"10\" class=\"hint\">No jobs yet.</td></tr>";
+    jobsEl.innerHTML = "<tr><td colspan=\"11\" class=\"hint\">No jobs yet.</td></tr>";
     return;
   }
 
@@ -374,6 +386,7 @@ async function loadJobs() {
   sorted.forEach((job) => {
     const pct = job.progress && job.progress.pct !== undefined ? `${job.progress.pct}%` : "-";
     let msg = job.progress && job.progress.logTail ? job.progress.logTail : "-";
+    const eta = job.progress && job.progress.etaSec !== undefined ? formatEta(job.progress.etaSec) : "-";
     if (job.cancelRequested) {
       msg = "Cancel requested";
     }
@@ -381,12 +394,13 @@ async function loadJobs() {
     row.innerHTML = `
       <td>${badgeForJob(job)}</td>
       <td>${pct}</td>
+      <td>${eta}</td>
       <td>${job.workerName || job.workerId || "-"}</td>
       <td title="${job.itemPath || job.itemId || ""}">${job.itemPath || job.itemId || "-"}</td>
       <td>${formatTimestamp(job.claimedAt)}</td>
       <td>${formatTimestamp(job.startedAt)}</td>
       <td>${formatTimestamp(job.finishedAt)}</td>
-      <td class="message-cell">${msg}</td>
+      <td class="message-cell" title="${msg}">${msg}</td>
       <td class="error-cell">${job.error || "-"}</td>
       <td>
         <button class="btn danger" data-job-delete="${job.id}">✕</button>

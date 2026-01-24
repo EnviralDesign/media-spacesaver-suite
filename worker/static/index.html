@@ -41,8 +41,11 @@
           <input id="cfg-cache" type="text" />
           <label class="label">HandBrake Path (optional)</label>
           <input id="cfg-handbrake" type="text" />
-          <label class="label">Work Hours (JSON)</label>
-          <textarea id="cfg-hours" rows="3"></textarea>
+          <label class="label">FFmpeg Path (optional)</label>
+          <input id="cfg-ffmpeg" type="text" />
+          <label class="label">Work Hours (local time)</label>
+          <div id="hours-list" class="hours-list"></div>
+          <button id="add-hour" class="btn ghost" type="button">Add Time Window</button>
           <label class="label">Poll Interval Sec</label>
           <input id="cfg-poll" type="number" min="1" />
           <button id="save-config" class="btn">Save Config</button>

@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+from datetime import datetime, timezone
 
 from state import load_state, now_iso, new_id, update_state, default_state
 from scan import compute_ratio, list_media_files, probe_media, ffprobe_path
@@ -43,6 +44,47 @@ def refresh_item_after_transcode(item, config, output_size=None):
 
     item["scanAt"] = now_iso()
     item["ratio"] = compute_ratio(item, config)
+
+
+def _parse_iso(value):
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def cleanup_stale_jobs(state, max_age_sec=180):
+    now = datetime.now(timezone.utc)
+    jobs = state.get("jobs") or []
+    items = state.get("items") or []
+    items_by_id = {item.get("id"): item for item in items}
+    updated = False
+
+    for job in jobs:
+        if job.get("status") not in {"claimed", "running"}:
+            continue
+        last_update = _parse_iso(job.get("lastUpdateAt")) or _parse_iso(job.get("claimedAt"))
+        if not last_update:
+            continue
+        age = (now - last_update).total_seconds()
+        if age < max_age_sec:
+            continue
+        job["status"] = "failed"
+        job["finishedAt"] = now_iso()
+        job["error"] = f"Stale job (no updates for {int(age)}s)"
+        item = items_by_id.get(job.get("itemId"))
+        if item:
+            item["status"] = "failed"
+            item["ready"] = False
+            item["lastError"] = job["error"]
+        updated = True
+
+    if updated:
+        state["jobs"] = jobs
+        state["items"] = items
+    return updated
 
 
 @app.get("/")
@@ -92,6 +134,10 @@ class EntryUpdate(BaseModel):
     name: str | None = None
     args: str | None = None
     notes: str | None = None
+
+
+class ItemPathUpdate(BaseModel):
+    path: str
 
 
 @app.get("/health")
@@ -283,7 +329,11 @@ def scan_entry(entry_id: str):
 
 @app.get("/api/items")
 def list_items(entryId: str | None = None, sort: str | None = None):
-    state = load_state()
+    def mutator(state):
+        cleanup_stale_jobs(state)
+        return state
+
+    state = update_state(mutator)
     items = list(state.get("items") or [])
     if entryId:
         items = [item for item in items if item.get("entryId") == entryId]
@@ -331,6 +381,22 @@ def reset_item(item_id: str):
     return JSONResponse(item)
 
 
+@app.post("/api/items/{item_id}/path")
+def update_item_path(item_id: str, payload: ItemPathUpdate):
+    def mutator(state):
+        items = state.get("items") or []
+        item = next((i for i in items if i.get("id") == item_id), None)
+        if not item:
+            raise HTTPException(status_code=404, detail="Item not found")
+        if item.get("status") == "processing":
+            item["path"] = payload.path
+            return item
+        item["path"] = payload.path
+        return item
+
+    item = update_state(mutator)
+    return JSONResponse(item)
+
 @app.delete("/api/items/{item_id}")
 def delete_item(item_id: str):
     def mutator(state):
@@ -350,6 +416,7 @@ def delete_item(item_id: str):
 @app.post("/api/jobs/claim")
 def claim_job(payload: ClaimRequest):
     def mutator(state):
+        cleanup_stale_jobs(state)
         workers = state.get("workers") or []
         worker = None
         if payload.workerId:
@@ -392,6 +459,7 @@ def claim_job(payload: ClaimRequest):
             "finishedAt": None,
             "error": "",
             "cancelRequested": False,
+            "lastUpdateAt": now_iso(),
         }
         state.setdefault("jobs", []).append(job)
 
@@ -416,7 +484,11 @@ def claim_job(payload: ClaimRequest):
 
 @app.get("/api/jobs")
 def list_jobs():
-    state = load_state()
+    def mutator(state):
+        cleanup_stale_jobs(state)
+        return state
+
+    state = update_state(mutator)
     jobs = state.get("jobs") or []
     items_by_id = {item.get("id"): item for item in (state.get("items") or [])}
     workers_by_id = {worker.get("id"): worker for worker in (state.get("workers") or [])}
@@ -441,6 +513,10 @@ def cancel_all_jobs():
         for job in jobs:
             if job.get("status") in {"claimed", "running"}:
                 job["cancelRequested"] = True
+                progress = job.get("progress") or {}
+                progress["logTail"] = "Cancel requested"
+                job["progress"] = progress
+                job["lastUpdateAt"] = now_iso()
                 active += 1
         return {"ok": True, "cancelRequested": active}
 
@@ -575,6 +651,7 @@ def job_start(job_id: str):
             raise HTTPException(status_code=404, detail="Job not found")
         job["status"] = "running"
         job["startedAt"] = now_iso()
+        job["lastUpdateAt"] = now_iso()
         return job
 
     job = update_state(mutator)
@@ -596,6 +673,7 @@ def job_progress(job_id: str, payload: JobProgress):
         if payload.logTail is not None:
             progress["logTail"] = payload.logTail
         job["progress"] = progress
+        job["lastUpdateAt"] = now_iso()
         return job
 
     job = update_state(mutator)
@@ -617,6 +695,7 @@ def job_complete(job_id: str, payload: JobUpdate):
         config = state.get("config") or {}
         job["status"] = "done"
         job["finishedAt"] = now_iso()
+        job["lastUpdateAt"] = now_iso()
         item["status"] = "done"
         item["ready"] = False
         item["lastError"] = ""
@@ -644,6 +723,7 @@ def job_fail(job_id: str, payload: JobUpdate):
         job["status"] = "failed"
         job["finishedAt"] = now_iso()
         job["error"] = payload.error or ""
+        job["lastUpdateAt"] = now_iso()
 
         item["status"] = "failed"
         item["lastError"] = payload.error or ""

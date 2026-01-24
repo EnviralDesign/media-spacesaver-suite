@@ -20,6 +20,7 @@ DEFAULT_CONFIG = {
     "handbrakePath": "",
     "workHours": [],
     "pollIntervalSec": 10,
+    "ffmpegPath": "",
 }
 
 
@@ -31,6 +32,7 @@ class ConfigRequest(BaseModel):
     handbrakePath: str | None = None
     workHours: list | None = None
     pollIntervalSec: int | None = None
+    ffmpegPath: str | None = None
 
 
 def resolve_handbrake(config):
@@ -57,6 +59,21 @@ def resolve_handbrake(config):
     for candidate in candidates:
         if Path(candidate).exists():
             return candidate
+    return None
+
+
+def resolve_ffmpeg(config):
+    explicit = config.get("ffmpegPath") or os.environ.get("FFMPEG_PATH")
+    if explicit:
+        path = Path(explicit)
+        if not path.is_absolute():
+            path = (BASE_DIR / path).resolve()
+        if path.exists():
+            return str(path)
+        return None
+    path = shutil.which("ffmpeg") or shutil.which("ffmpeg.exe")
+    if path:
+        return path
     return None
 
 
@@ -113,11 +130,17 @@ def diagnostics():
         except json.JSONDecodeError:
             pass
     handbrake = resolve_handbrake(config)
+    ffmpeg = resolve_ffmpeg(config)
     return JSONResponse(
         {
             "handbrake": {
                 "found": bool(handbrake),
                 "path": handbrake or "",
+            }
+            ,
+            "ffmpeg": {
+                "found": bool(ffmpeg),
+                "path": ffmpeg or "",
             }
         }
     )

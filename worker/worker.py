@@ -30,6 +30,7 @@ DEFAULT_CONFIG = {
     "uiEnabled": True,
     "uiHost": "0.0.0.0",
     "uiPort": 8857,
+    "ffmpegPath": "",
 }
 
 STATUS_PATH = Path(__file__).resolve().parent / "status.json"
@@ -92,6 +93,26 @@ def _find_handbrake():
     return None
 
 
+def _find_ffmpeg():
+    env_path = os.environ.get("FFMPEG_PATH")
+    if env_path and Path(env_path).exists():
+        return env_path
+    path = shutil.which("ffmpeg") or shutil.which("ffmpeg.exe")
+    if path:
+        return path
+    candidates = [
+        r"C:\ffmpeg\bin\ffmpeg.exe",
+        r"C:\Program Files\ffmpeg\bin\ffmpeg.exe",
+        r"C:\Program Files (x86)\ffmpeg\bin\ffmpeg.exe",
+        "/usr/local/bin/ffmpeg",
+        "/usr/bin/ffmpeg",
+    ]
+    for candidate in candidates:
+        if Path(candidate).exists():
+            return candidate
+    return None
+
+
 def _ensure_handbrake_path(config):
     if config.get("handbrakePath"):
         return config
@@ -112,6 +133,21 @@ def handbrake_path(config):
     return path
 
 
+def ffmpeg_path(config=None):
+    explicit = None
+    if config:
+        explicit = config.get("ffmpegPath")
+    env_path = os.environ.get("FFMPEG_PATH")
+    if explicit and Path(explicit).exists():
+        return explicit
+    if env_path and Path(env_path).exists():
+        return env_path
+    path = _find_ffmpeg()
+    if not path:
+        raise RuntimeError("ffmpeg not found on PATH. Set FFMPEG_PATH or install ffmpeg.")
+    return path
+
+
 def split_args(args_str):
     return shlex.split(args_str or "", posix=False)
 
@@ -125,6 +161,45 @@ def detect_extension(args_list, default_ext):
             if "mp4" in fmt:
                 return ".mp4"
     return default_ext
+
+
+def ensure_mkv_extension(path: Path):
+    if path.suffix.lower() == ".mkv":
+        return path
+    return path.with_suffix(".mkv")
+
+
+def remux_with_metadata(src_path: Path, ffmpeg, metadata):
+    temp_path = src_path.with_suffix(src_path.suffix + ".meta.mkv")
+    cmd = [
+        ffmpeg,
+        "-y",
+        "-i",
+        str(src_path),
+        "-map",
+        "0",
+        "-c",
+        "copy",
+    ]
+    for key, value in metadata.items():
+        cmd += ["-metadata", f"{key}={value}"]
+    cmd.append(str(temp_path))
+    run_cmd = subprocess.run(cmd, capture_output=True, text=True)
+    if run_cmd.returncode != 0:
+        detail = (run_cmd.stderr or run_cmd.stdout or "ffmpeg remux failed").strip()
+        raise RuntimeError(detail)
+    os.replace(temp_path, src_path)
+
+
+def update_item_path(server_url, item_id, new_path):
+    try:
+        requests.post(
+            f"{server_url}/api/items/{item_id}/path",
+            json={"path": new_path},
+            timeout=30,
+        )
+    except requests.RequestException:
+        pass
 
 
 def within_work_hours(work_hours):
@@ -178,6 +253,12 @@ def heartbeat(server_url, worker_id, worker_name):
         pass
 
 
+def heartbeat_loop(server_url, worker_id, worker_name, interval_sec=10):
+    while True:
+        heartbeat(server_url, worker_id, worker_name)
+        time.sleep(interval_sec)
+
+
 def post_job_update(server_url, job_id, endpoint, payload=None):
     url = f"{server_url}/api/jobs/{job_id}/{endpoint}"
     resp = requests.post(url, json=payload or {}, timeout=30)
@@ -194,7 +275,10 @@ def post_job_progress(server_url, job_id, pct=None, eta_sec=None, log_tail=None)
         payload["logTail"] = log_tail
     if not payload:
         return
-    post_job_update(server_url, job_id, "progress", payload)
+    try:
+        post_job_update(server_url, job_id, "progress", payload)
+    except requests.RequestException as exc:
+        log(f"Progress update failed: {exc}")
 
 
 def cancel_requested(server_url, job_id):
@@ -295,6 +379,32 @@ def _tail_text(lines, limit=2000):
     return joined[-limit:]
 
 
+def parse_eta_seconds(text):
+    if not text:
+        return None
+    match = re.search(r"ETA\s+(\d{1,2}):(\d{2}):(\d{2})", text)
+    if match:
+        hours = int(match.group(1))
+        minutes = int(match.group(2))
+        seconds = int(match.group(3))
+        return hours * 3600 + minutes * 60 + seconds
+
+    match = re.search(r"ETA\s+(\d{1,2})h(\d{1,2})m(?:([0-9]{1,2})s)?", text)
+    if match:
+        hours = int(match.group(1))
+        minutes = int(match.group(2))
+        seconds = int(match.group(3) or 0)
+        return hours * 3600 + minutes * 60 + seconds
+
+    match = re.search(r"ETA\s+(\d{1,2})m([0-9]{1,2})s", text)
+    if match:
+        minutes = int(match.group(1))
+        seconds = int(match.group(2))
+        return minutes * 60 + seconds
+
+    return None
+
+
 def run_handbrake(cmd, server_url, job_id, progress_cb=None):
     last_lines = deque(maxlen=25)
     last_pct = None
@@ -342,6 +452,7 @@ def run_handbrake(cmd, server_url, job_id, progress_cb=None):
                 last_lines.append(line)
 
             pct = None
+            eta_sec = None
             if "Encoding" in line and "%" in line:
                 match = re.search(r"([0-9]{1,3}(?:\.[0-9]+)?)\s*%", line)
                 if match:
@@ -349,19 +460,21 @@ def run_handbrake(cmd, server_url, job_id, progress_cb=None):
                         pct = float(match.group(1))
                     except ValueError:
                         pct = None
+                eta_sec = parse_eta_seconds(line)
 
             now = time.time()
             if pct is not None:
                 if last_pct is None or abs(pct - last_pct) >= 0.5 or now - last_update > 2:
-                    post_job_progress(server_url, job_id, pct=round(pct, 1), log_tail=line)
+                    msg = f"Encoding {pct:.1f}%"
+                    post_job_progress(server_url, job_id, pct=round(pct, 1), eta_sec=eta_sec, log_tail=msg)
                     if progress_cb:
-                        progress_cb(round(pct, 1), line)
+                        progress_cb(round(pct, 1), msg, eta_sec)
                     last_pct = pct
                     last_update = now
             elif line and now - last_update > 5:
                 post_job_progress(server_url, job_id, log_tail=line)
                 if progress_cb:
-                    progress_cb(None, line)
+                    progress_cb(None, line, None)
                 last_update = now
 
         now = time.time()
@@ -425,13 +538,14 @@ def process_job(job_payload, config):
     post_job_progress(config["serverUrl"], job["id"], pct=15, log_tail="Encoding")
     write_status("working", job_id=job["id"], error=None, progress_pct=15, progress_message="Encoding")
 
-    def local_progress(pct, message):
+    def local_progress(pct, message, eta_sec=None):
         write_status(
             "working",
             job_id=job["id"],
             error=None,
             progress_pct=pct,
             progress_message=message,
+            progress_eta_sec=eta_sec,
         )
 
     tail = run_handbrake(cmd, config["serverUrl"], job["id"], progress_cb=local_progress)
@@ -449,9 +563,12 @@ def process_job(job_payload, config):
                 raise RuntimeError(f"Output missing after encode: {local_out} | {detail}")
             raise RuntimeError(f"Output missing after encode: {local_out}")
 
+    # Standardize on MKV output path
+    dest_path = ensure_mkv_extension(input_path)
+
     post_job_progress(config["serverUrl"], job["id"], pct=85, log_tail="Copying output to source")
     write_status("working", job_id=job["id"], error=None, progress_pct=85, progress_message="Copying output to source")
-    dest_tmp = input_path.with_suffix(input_path.suffix + ".tmp")
+    dest_tmp = dest_path.with_suffix(dest_path.suffix + ".tmp")
     if dest_tmp.exists():
         dest_tmp.unlink()
     try:
@@ -471,11 +588,35 @@ def process_job(job_payload, config):
                 pass
         raise RuntimeError("Cancelled by user")
     try:
-        os.replace(dest_tmp, input_path)
+        os.replace(dest_tmp, dest_path)
     except FileNotFoundError as exc:
-        raise RuntimeError(f"Replace failed: {dest_tmp} -> {input_path}") from exc
+        raise RuntimeError(f"Replace failed: {dest_tmp} -> {dest_path}") from exc
 
-    output_size = local_out.stat().st_size if local_out.exists() else None
+    # Add metadata tag (ffmpeg remux)
+    try:
+        post_job_progress(config["serverUrl"], job["id"], pct=96, log_tail="Tagging metadata")
+        write_status("working", job_id=job["id"], error=None, progress_pct=96, progress_message="Tagging metadata")
+        remux_with_metadata(
+            dest_path,
+            ffmpeg_path(config),
+            {
+                "encoded_by": "MediaSpacesaver",
+                "comment": "spacesaver=1",
+            },
+        )
+    except Exception as exc:
+        raise RuntimeError(f"Metadata tagging failed: {exc}") from exc
+
+    # If extension changed, remove original and update server path
+    if dest_path != input_path:
+        try:
+            if input_path.exists():
+                input_path.unlink()
+        except OSError:
+            pass
+        update_item_path(config["serverUrl"], item.get("id"), str(dest_path))
+
+    output_size = dest_path.stat().st_size if dest_path.exists() else None
 
     for path in (local_in, local_out):
         try:
@@ -490,13 +631,14 @@ def process_job(job_payload, config):
     return output_size
 
 
-def write_status(state, job_id=None, error=None, progress_pct=None, progress_message=None):
+def write_status(state, job_id=None, error=None, progress_pct=None, progress_message=None, progress_eta_sec=None):
     payload = {
         "state": state,
         "jobId": job_id,
         "lastError": error or "",
         "progressPct": progress_pct,
         "progressMessage": progress_message or "",
+        "progressEtaSec": progress_eta_sec,
     }
     STATUS_PATH.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
@@ -559,6 +701,12 @@ def main():
         write_status("idle", job_id=None, error=str(exc))
     if ui_enabled:
         start_ui_server(config.get("uiHost", "127.0.0.1"), int(config.get("uiPort", 8857)))
+    if worker_id:
+        threading.Thread(
+            target=heartbeat_loop,
+            args=(server_url, worker_id, worker_name, 10),
+            daemon=True,
+        ).start()
 
     while True:
         if not within_work_hours(config.get("workHours")):
