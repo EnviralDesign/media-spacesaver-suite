@@ -8,4 +8,9 @@
 # Worker cache
 /worker/cache/
 
+# Local configs/status
+/worker/status.json
+/worker/config.json
+/tools/compare/config.json
+
 *__pycache__*
