@@ -12,6 +12,7 @@ import socket
 from datetime import datetime
 from pathlib import Path
 from collections import deque
+from queue import Queue, Empty
 
 import requests
 
@@ -206,6 +207,87 @@ def cancel_requested(server_url, job_id):
     except requests.RequestException:
         return False
 
+
+def terminate_process(proc):
+    try:
+        proc.terminate()
+    except Exception:
+        pass
+    try:
+        proc.wait(timeout=2)
+        return
+    except Exception:
+        pass
+
+    if os.name == "nt":
+        try:
+            subprocess.run(
+                ["taskkill", "/PID", str(proc.pid), "/T", "/F"],
+                capture_output=True,
+                text=True,
+            )
+        except Exception:
+            pass
+    else:
+        try:
+            proc.kill()
+        except Exception:
+            pass
+
+
+def copy_with_cancel(src, dst, server_url, job_id, label, pct_start=None, pct_span=None):
+    src_path = Path(src)
+    dst_path = Path(dst)
+    dst_path.parent.mkdir(parents=True, exist_ok=True)
+    total = src_path.stat().st_size if src_path.exists() else 0
+    copied = 0
+    chunk_size = 8 * 1024 * 1024
+    last_update = 0.0
+
+    with src_path.open("rb") as r, dst_path.open("wb") as w:
+        while True:
+            chunk = r.read(chunk_size)
+            if not chunk:
+                break
+            w.write(chunk)
+            copied += len(chunk)
+            now = time.time()
+            if total > 0 and now - last_update > 0.5:
+                pct = (copied / total) * 100
+                msg = f"{label} {pct:.1f}%"
+                if pct_start is not None and pct_span is not None:
+                    overall = pct_start + (pct / 100.0) * pct_span
+                    post_job_progress(server_url, job_id, pct=round(overall, 1), log_tail=msg)
+                    write_status("working", job_id=job_id, error=None, progress_pct=round(overall, 1), progress_message=msg)
+                else:
+                    post_job_progress(server_url, job_id, log_tail=msg)
+                    write_status("working", job_id=job_id, error=None, progress_pct=None, progress_message=msg)
+                last_update = now
+            if cancel_requested(server_url, job_id):
+                raise RuntimeError("Cancelled by user")
+
+    try:
+        shutil.copystat(src_path, dst_path)
+    except OSError:
+        pass
+
+    if total and copied < total:
+        raise RuntimeError(f"Copy incomplete ({label})")
+
+
+def clean_cache_dir(cache_dir):
+    if not cache_dir.exists():
+        return
+    for path in cache_dir.iterdir():
+        try:
+            if path.is_file():
+                path.unlink()
+            elif path.is_dir():
+                shutil.rmtree(path, ignore_errors=True)
+        except OSError:
+            pass
+
+
 def _tail_text(lines, limit=2000):
     joined = "\n".join(lines).strip()
     if len(joined) <= limit:
@@ -230,51 +312,67 @@ def run_handbrake(cmd, server_url, job_id, progress_cb=None):
     if proc.stdout is None:
         raise RuntimeError("Failed to capture HandBrakeCLI output.")
 
-    for raw_line in proc.stdout:
-        line = (raw_line or "").strip()
-        if line:
-            last_lines.append(line)
+    queue = Queue()
+    sentinel = object()
 
-        pct = None
-        if "Encoding" in line and "%" in line:
-            match = re.search(r"([0-9]{1,3}(?:\.[0-9]+)?)\s*%", line)
-            if match:
-                try:
-                    pct = float(match.group(1))
-                except ValueError:
-                    pct = None
+    def reader():
+        try:
+            for raw_line in proc.stdout:
+                queue.put(raw_line)
+        finally:
+            queue.put(sentinel)
+
+    thread = threading.Thread(target=reader, daemon=True)
+    thread.start()
+
+    reader_done = False
+    while True:
+        try:
+            raw_line = queue.get(timeout=0.2)
+        except Empty:
+            raw_line = None
+
+        if raw_line is sentinel:
+            reader_done = True
+            raw_line = None
+
+        if raw_line:
+            line = (raw_line or "").strip()
+            if line:
+                last_lines.append(line)
+
+            pct = None
+            if "Encoding" in line and "%" in line:
+                match = re.search(r"([0-9]{1,3}(?:\.[0-9]+)?)\s*%", line)
+                if match:
+                    try:
+                        pct = float(match.group(1))
+                    except ValueError:
+                        pct = None
+
+            now = time.time()
+            if pct is not None:
+                if last_pct is None or abs(pct - last_pct) >= 0.5 or now - last_update > 2:
+                    post_job_progress(server_url, job_id, pct=round(pct, 1), log_tail=line)
+                    if progress_cb:
+                        progress_cb(round(pct, 1), line)
+                    last_pct = pct
+                    last_update = now
+            elif line and now - last_update > 5:
+                post_job_progress(server_url, job_id, log_tail=line)
+                if progress_cb:
+                    progress_cb(None, line)
+                last_update = now
 
         now = time.time()
-        if pct is not None:
-            if last_pct is None or abs(pct - last_pct) >= 0.5 or now - last_update > 2:
-                post_job_progress(server_url, job_id, pct=round(pct, 1), log_tail=line)
-                if progress_cb:
-                    progress_cb(round(pct, 1), line)
-                last_pct = pct
-                last_update = now
-        elif line and now - last_update > 5:
-            post_job_progress(server_url, job_id, log_tail=line)
-            if progress_cb:
-                progress_cb(None, line)
-            last_update = now
-
-        if now - last_cancel_check > 2:
+        if now - last_cancel_check > 1:
             last_cancel_check = now
             if cancel_requested(server_url, job_id):
-                try:
-                    proc.terminate()
-                except Exception:
-                    pass
-                try:
-                    proc.wait(timeout=5)
-                except Exception:
-                    try:
-                        proc.kill()
-                    except Exception:
-                        pass
+                terminate_process(proc)
                 raise RuntimeError("Cancelled by user")
 
-    proc.wait()
+        if proc.poll() is not None and reader_done and queue.empty():
+            break
 
     tail = _tail_text(last_lines)
     if proc.returncode != 0:
@@ -294,6 +392,7 @@ def process_job(job_payload, config):
 
     cache_dir = Path(config["cacheDir"])
     cache_dir.mkdir(parents=True, exist_ok=True)
+    clean_cache_dir(cache_dir)
 
     input_suffix = input_path.suffix
     output_ext = detect_extension(args_list, input_suffix)
@@ -305,7 +404,15 @@ def process_job(job_payload, config):
     write_status("working", job_id=job["id"], error=None, progress_pct=5, progress_message="Copying source to cache")
     if cancel_requested(config["serverUrl"], job["id"]):
         raise RuntimeError("Cancelled by user")
-    shutil.copy2(input_path, local_in)
+    try:
+        copy_with_cancel(input_path, local_in, config["serverUrl"], job["id"], "Copying source", pct_start=2, pct_span=10)
+    except Exception:
+        if local_in.exists():
+            try:
+                local_in.unlink()
+            except OSError:
+                pass
+        raise
 
     cmd = [
         handbrake_path(config),
@@ -348,9 +455,21 @@ def process_job(job_payload, config):
     if dest_tmp.exists():
         dest_tmp.unlink()
     try:
-        shutil.copy2(local_out, dest_tmp)
-    except FileNotFoundError as exc:
-        raise RuntimeError(f"Copy failed: {local_out} -> {dest_tmp}") from exc
+        copy_with_cancel(local_out, dest_tmp, config["serverUrl"], job["id"], "Copying output", pct_start=85, pct_span=10)
+    except Exception:
+        if dest_tmp.exists():
+            try:
+                dest_tmp.unlink()
+            except OSError:
+                pass
+        raise
+    if cancel_requested(config["serverUrl"], job["id"]):
+        if dest_tmp.exists():
+            try:
+                dest_tmp.unlink()
+            except OSError:
+                pass
+        raise RuntimeError("Cancelled by user")
     try:
         os.replace(dest_tmp, input_path)
     except FileNotFoundError as exc:
@@ -358,14 +477,12 @@ def process_job(job_payload, config):
 
     output_size = local_out.stat().st_size if local_out.exists() else None
 
-    try:
-        local_in.unlink()
-    except OSError:
-        pass
-    try:
-        local_out.unlink()
-    except OSError:
-        pass
+    for path in (local_in, local_out):
+        try:
+            if path.exists():
+                path.unlink()
+        except OSError:
+            pass
 
     post_job_progress(config["serverUrl"], job["id"], pct=100, log_tail="Done")
     write_status("working", job_id=job["id"], error=None, progress_pct=100, progress_message="Done")
