@@ -8,9 +8,16 @@
   </head>
   <body>
     <header class="topbar">
-      <div class="brand">Media Compare</div>
+      <div class="brand">
+        <div class="brand-mark"></div>
+        <div>
+          <div class="brand-title">Media Compare</div>
+          <div class="brand-sub">Preview Tool</div>
+        </div>
+      </div>
       <div class="status" id="status">Idle</div>
     </header>
+    <div id="alerts" class="alerts"></div>
 
     <main class="layout">
       <section class="panel controls">
@@ -25,8 +32,10 @@
         <div class="block">
           <div class="label">Baseline HandBrakeCLI args</div>
           <textarea id="baseline" rows="4"></textarea>
+          <div class="label">Server URL (for target samples)</div>
+          <input id="server-url" type="text" />
           <div class="row">
-            <button id="btn-save-args" class="btn">Save Args</button>
+            <button id="btn-save-args" class="btn">Save Settings</button>
             <div class="hint" id="args-status"></div>
           </div>
         </div>
@@ -43,6 +52,12 @@
             <div class="hint" id="sample-status"></div>
           </div>
           <div class="hint" id="sample-size"></div>
+          <div class="label">Target MB/min snippet</div>
+          <input id="target-snippet" type="text" readonly />
+          <div class="row">
+            <button id="btn-send-target" class="btn">Send to Server</button>
+            <div class="hint" id="target-status"></div>
+          </div>
         </div>
 
         <div class="block">
@@ -89,6 +104,8 @@
           <div class="encoded-layer" id="encoded-layer">
             <video id="video-encoded" muted preload="auto"></video>
           </div>
+          <div class="compare-label left">Original</div>
+          <div class="compare-label right">Encoded</div>
           <div class="wipe-line" id="wipe-line"></div>
           <div class="overlay" id="overlay">Select a file to begin</div>
         </div>

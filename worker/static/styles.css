@@ -1,0 +1,172 @@
+:root {
+  --bg: #f1f0f4;
+  --bg-alt: #e0e0ea;
+  --ink: #1c1b20;
+  --muted: #6b6a78;
+  --accent: #5f3c2f;
+  --accent-bright: #7b5642;
+  --panel: #fbfafc;
+  --line: #d8d6e2;
+  --shadow: rgba(25, 22, 32, 0.16);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "Bahnschrift", "Segoe UI Variable", "Helvetica Neue", sans-serif;
+  color: var(--ink);
+  background:
+    radial-gradient(1000px 600px at 20% 0%, #ffffff 0%, var(--bg) 55%, #dbd9e6 100%),
+    linear-gradient(135deg, var(--bg) 0%, var(--bg-alt) 100%);
+  min-height: 100vh;
+}
+
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 18px 26px;
+  border-bottom: 1px solid var(--line);
+  background: rgba(252, 251, 255, 0.92);
+  backdrop-filter: blur(6px);
+}
+
+.alerts {
+  padding: 12px 24px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.alert {
+  border: 1px solid #d1b27a;
+  background: #fff3d9;
+  color: #7c5312;
+  padding: 8px 12px;
+  border-radius: 10px;
+  font-size: 12px;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.brand-mark {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  background: linear-gradient(145deg, var(--accent) 0%, #37241b 100%);
+  box-shadow: 0 8px 16px rgba(95, 60, 47, 0.35);
+}
+
+.brand-title {
+  font-size: 20px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+
+.brand-sub {
+  font-size: 12px;
+  color: var(--muted);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.status {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.layout {
+  padding: 18px 24px 32px;
+  animation: floatIn 0.5s ease;
+}
+
+.panel {
+  max-width: 680px;
+}
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 16px;
+  margin-bottom: 16px;
+  box-shadow: 0 14px 32px var(--shadow);
+}
+
+.card-title {
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: var(--muted);
+  margin-bottom: 12px;
+}
+
+.label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--muted);
+  margin-top: 8px;
+  margin-bottom: 4px;
+}
+
+input,
+textarea {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 8px 10px;
+  background: #fffdf7;
+  font-family: "Consolas", "Courier New", monospace;
+  font-size: 12px;
+}
+
+textarea {
+  resize: vertical;
+}
+
+.btn {
+  border: 1px solid var(--line);
+  background: #fffaf1;
+  color: var(--ink);
+  padding: 8px 12px;
+  border-radius: 9px;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+  font-size: 12px;
+}
+
+.btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12);
+}
+
+.status-line {
+  font-size: 13px;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+
+.hint {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 6px;
+}
+
+@keyframes floatIn {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

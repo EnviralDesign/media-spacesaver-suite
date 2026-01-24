@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Media Spacesaver Server</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark"></div>
+        <div>
+          <div class="brand-title">Media Spacesaver</div>
+          <div class="brand-sub">Server Console</div>
+        </div>
+      </div>
+      <div class="status" id="status">Idle</div>
+    </header>
+    <div id="alerts" class="alerts"></div>
+
+    <main class="layout">
+      <section class="sidebar">
+        <div class="card">
+          <div class="card-title">Add Entry</div>
+          <label class="label">Path</label>
+          <input id="entry-path" type="text" placeholder="X:\Media\Movies" />
+          <label class="label">Name (optional)</label>
+          <input id="entry-name" type="text" placeholder="Movies" />
+          <label class="label">Entry Args (optional)</label>
+          <textarea id="entry-args" rows="2" placeholder="--encoder-preset medium"></textarea>
+          <button id="add-entry" class="btn primary">Add Entry</button>
+        </div>
+
+        <div class="card">
+          <div class="card-title">Entries</div>
+          <div class="toolbar">
+            <div class="toolbar-group">
+              <button id="scan-all" class="btn ghost">Scan All</button>
+            </div>
+          </div>
+          <div id="entries" class="entry-list"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">Config</div>
+          <label class="label">Baseline args</label>
+          <textarea id="config-baseline" rows="4"></textarea>
+          <label class="label">FFprobe path (optional)</label>
+          <input id="config-ffprobe" type="text" placeholder="C:\ffmpeg\bin\ffprobe.exe" />
+          <label class="label">Target MB/min by height (JSON)</label>
+          <textarea id="config-buckets" rows="4"></textarea>
+          <div class="row">
+            <button id="clear-target-samples" class="btn danger">Reset Target Table</button>
+            <div class="hint" id="config-samples"></div>
+          </div>
+          <button id="save-config" class="btn">Save Config</button>
+          <div class="hint" id="config-status"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">Workers</div>
+          <div id="workers" class="worker-list"></div>
+        </div>
+      </section>
+
+      <section class="content">
+        <div class="card">
+          <div class="card-title">Items</div>
+          <div class="toolbar">
+            <div class="toolbar-group">
+              <button id="sort-savings" class="btn ghost">Sort by Savings</button>
+              <button id="sort-percent" class="btn ghost">Sort by %</button>
+            </div>
+            <div class="toolbar-group">
+              <button id="refresh-items" class="btn">Refresh</button>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Ready</th>
+                  <th>Status</th>
+                  <th>Path</th>
+                  <th>Size</th>
+                  <th>Duration</th>
+                  <th>Res</th>
+                  <th>Savings</th>
+                  <th>%</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="items"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">Jobs</div>
+          <div class="toolbar">
+            <div class="toolbar-group">
+              <button id="refresh-jobs" class="btn">Refresh</button>
+            </div>
+            <div class="toolbar-group">
+              <button id="cancel-all" class="btn danger">Cancel All</button>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Status</th>
+                  <th>Progress</th>
+                  <th>Worker</th>
+                  <th>Item</th>
+                  <th>Claimed</th>
+                  <th>Started</th>
+                  <th>Finished</th>
+                  <th>Message</th>
+                  <th>Error</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="jobs"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <script src="/static/app.js"></script>
+  </body>
+</html>

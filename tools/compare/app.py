@@ -34,7 +34,8 @@ DEFAULT_CONFIG = {
     "baselineArgs": "-f av_mkv -e x265_10bit --encoder-preset slow -q 20 --audio-lang-list eng --first-audio -E copy --subtitle-lang-list eng --first-subtitle",
     "sampleSeconds": 10,
     "handbrakePath": "",
-    "ffmpegPath": ""
+    "ffmpegPath": "",
+    "serverUrl": "http://127.0.0.1:8856",
 }
 
 
@@ -95,6 +96,18 @@ def handbrake_path(config):
     return path
 
 
+def resolve_handbrake(config):
+    explicit = (config or {}).get("handbrakePath") or os.environ.get("HANDBRAKECLI_PATH")
+    if explicit:
+        path = Path(explicit)
+        if not path.is_absolute():
+            path = (BASE_DIR / path).resolve()
+        if path.exists():
+            return str(path)
+        return None
+    return shutil.which("HandBrakeCLI") or shutil.which("HandBrakeCLI.exe")
+
+
 def ffmpeg_path(config):
     explicit = (config or {}).get("ffmpegPath") or os.environ.get("FFMPEG_PATH")
     if explicit:
@@ -113,6 +126,18 @@ def ffmpeg_path(config):
     return path
 
 
+def resolve_ffmpeg(config):
+    explicit = (config or {}).get("ffmpegPath") or os.environ.get("FFMPEG_PATH")
+    if explicit:
+        path = Path(explicit)
+        if not path.is_absolute():
+            path = (BASE_DIR / path).resolve()
+        if path.exists():
+            return str(path)
+        return None
+    return shutil.which("ffmpeg") or shutil.which("ffmpeg.exe")
+
+
 def run_cmd(cmd, default_error="Command failed"):
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
@@ -129,7 +154,8 @@ class SampleRequest(BaseModel):
 
 
 class ConfigRequest(BaseModel):
-    baselineArgs: str
+    baselineArgs: str | None = None
+    serverUrl: str | None = None
 
 
 app = FastAPI()
@@ -146,12 +172,28 @@ def get_config():
     return JSONResponse(load_config())
 
 
+@app.get("/api/diagnostics")
+def diagnostics():
+    config = load_config()
+    handbrake = resolve_handbrake(config)
+    ffmpeg = resolve_ffmpeg(config)
+    return JSONResponse(
+        {
+            "handbrake": {"found": bool(handbrake), "path": handbrake or ""},
+            "ffmpeg": {"found": bool(ffmpeg), "path": ffmpeg or ""},
+        }
+    )
+
+
 @app.post("/api/config")
 def set_config(payload: ConfigRequest):
-    args_list = split_args(payload.baselineArgs)
-    validate_args(args_list)
     config = load_config()
-    config["baselineArgs"] = payload.baselineArgs
+    if payload.baselineArgs is not None:
+        args_list = split_args(payload.baselineArgs)
+        validate_args(args_list)
+        config["baselineArgs"] = payload.baselineArgs
+    if payload.serverUrl is not None:
+        config["serverUrl"] = payload.serverUrl
     save_config(config)
     return JSONResponse(config)
 
@@ -370,4 +412,4 @@ def media_encoded(request: Request):
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run("app:app", host="127.0.0.1", port=8855, reload=True)
+    uvicorn.run("app:app", host="0.0.0.0", port=8855, reload=True)

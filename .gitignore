@@ -1,3 +1,11 @@
 # Compare tool cache
 /data/compare_cache/
 .venv/
+
+# Server state
+/data/state.json
+
+# Worker cache
+/worker/cache/
+
+*__pycache__*

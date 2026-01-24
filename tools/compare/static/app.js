@@ -1,13 +1,17 @@
 const statusEl = document.getElementById("status");
+const alertsEl = document.getElementById("alerts");
 const fileNameEl = document.getElementById("file-name");
 const filePathEl = document.getElementById("file-path");
 const baselineEl = document.getElementById("baseline");
+const serverUrlEl = document.getElementById("server-url");
 const argsStatusEl = document.getElementById("args-status");
 const seekSelect = document.getElementById("seek-select");
 const seekTimeEl = document.getElementById("seek-time");
 const durationEl = document.getElementById("duration");
 const sampleStatusEl = document.getElementById("sample-status");
 const sampleSizeEl = document.getElementById("sample-size");
+const targetSnippetEl = document.getElementById("target-snippet");
+const targetStatusEl = document.getElementById("target-status");
 const sampleButton = document.getElementById("btn-sample");
 const playButton = document.getElementById("btn-play");
 const playbackSeek = document.getElementById("seek-playback");
@@ -25,6 +29,7 @@ const encodedVideo = document.getElementById("video-encoded");
 
 const selectButton = document.getElementById("btn-select");
 const saveArgsButton = document.getElementById("btn-save-args");
+const sendTargetButton = document.getElementById("btn-send-target");
 const zoomFitButton = document.getElementById("zoom-fit");
 const zoomActualButton = document.getElementById("zoom-actual");
 const previewButton = document.getElementById("btn-preview");
@@ -47,6 +52,9 @@ const state = {
   dragStartY: 0,
   dragPanX: 0,
   dragPanY: 0,
+  configDirty: false,
+  sampleEncodedBytes: 0,
+  sampleHeight: 0,
 };
 
 function formatTime(seconds) {
@@ -66,6 +74,17 @@ function formatBytes(bytes) {
     idx += 1;
   }
   return `${value.toFixed(value >= 10 || idx === 0 ? 0 : 1)} ${units[idx]}`;
+}
+
+function updateTargetSnippet() {
+  if (!targetSnippetEl) return;
+  const height = state.sampleHeight || encodedVideo.videoHeight || originalVideo.videoHeight || 0;
+  if (!height || !state.sampleEncodedBytes || !state.sampleDuration) {
+    targetSnippetEl.value = "";
+    return;
+  }
+  const mbPerMin = (state.sampleEncodedBytes / (1024 * 1024)) / (state.sampleDuration / 60);
+  targetSnippetEl.value = `{ "${height}": ${mbPerMin.toFixed(1)} }`;
 }
 
 async function fetchJson(url, options) {
@@ -151,6 +170,12 @@ function setMode(mode) {
     videoShell.classList.remove("mode-compare");
     playButton.disabled = true;
     playbackSeek.disabled = true;
+    try {
+      originalVideo.pause();
+      encodedVideo.pause();
+    } catch (_) {
+      // ignore
+    }
   } else {
     videoShell.classList.remove("mode-preview");
     videoShell.classList.add("mode-compare");
@@ -247,9 +272,30 @@ function startFrameSync() {
 async function loadConfig() {
   const config = await fetchJson("/api/config");
   baselineEl.value = config.baselineArgs || "";
+  if (serverUrlEl) {
+    serverUrlEl.value = config.serverUrl || "";
+  }
   state.sampleDuration = config.sampleSeconds || 10;
   playbackSeek.max = state.sampleDuration;
   playbackLengthEl.textContent = formatTime(state.sampleDuration);
+  setConfigDirty(false);
+}
+
+async function loadDiagnostics() {
+  if (!alertsEl) return;
+  try {
+    const diag = await fetchJson("/api/diagnostics");
+    const warnings = [];
+    if (!diag.handbrake || !diag.handbrake.found) {
+      warnings.push("HandBrakeCLI not found. Set handbrakePath in config.json or HANDBRAKECLI_PATH.");
+    }
+    if (!diag.ffmpeg || !diag.ffmpeg.found) {
+      warnings.push("ffmpeg not found. Set ffmpegPath in config.json or FFMPEG_PATH.");
+    }
+    alertsEl.innerHTML = warnings.map((msg) => `<div class="alert warn">${msg}</div>`).join("");
+  } catch (_) {
+    alertsEl.innerHTML = "";
+  }
 }
 
 async function selectFile() {
@@ -287,13 +333,22 @@ async function saveArgs() {
     await fetchJson("/api/config", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ baselineArgs: baselineEl.value }),
+      body: JSON.stringify({
+        baselineArgs: baselineEl.value,
+        serverUrl: serverUrlEl ? serverUrlEl.value : "",
+      }),
     });
     argsStatusEl.textContent = "Saved";
+    setConfigDirty(false);
   } catch (err) {
     argsStatusEl.textContent = "Error";
     console.error(err);
   }
+}
+
+function setConfigDirty(isDirty) {
+  state.configDirty = isDirty;
+  saveArgsButton.disabled = !isDirty;
 }
 
 async function createSample() {
@@ -302,8 +357,14 @@ async function createSample() {
   setStatus("Encoding sample...");
   sampleStatusEl.textContent = "Encoding...";
   sampleSizeEl.textContent = "";
+  if (targetStatusEl) {
+    targetStatusEl.textContent = "";
+  }
   const start = parseFloat(seekSelect.value || "0");
   try {
+    if (state.configDirty) {
+      await saveArgs();
+    }
     const data = await fetchJson("/api/sample", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -311,6 +372,8 @@ async function createSample() {
     });
     state.sampleStart = data.sampleStart;
     state.sampleDuration = data.sampleDuration;
+    state.sampleEncodedBytes = data.encodedSizeBytes || 0;
+    state.sampleHeight = 0;
     playbackSeek.max = state.sampleDuration;
     playbackLengthEl.textContent = formatTime(state.sampleDuration);
 
@@ -328,11 +391,16 @@ async function createSample() {
       const pct = data.sourceSizeBytes > 0 ? (savings / data.sourceSizeBytes) * 100 : 0;
       sampleSizeEl.textContent = `Size: ${formatBytes(data.sourceSizeBytes)} → ${formatBytes(data.encodedSizeBytes)} (${pct.toFixed(1)}% saved)`;
     }
+    updateTargetSnippet();
     setStatus("Sample ready");
   } catch (err) {
     const msg = err?.message ? err.message : "Failed";
     sampleStatusEl.textContent = msg;
     sampleSizeEl.textContent = "";
+    targetSnippetEl.value = "";
+    if (targetStatusEl) {
+      targetStatusEl.textContent = "";
+    }
     setStatus("Sample failed");
     console.error(err);
   } finally {
@@ -343,13 +411,15 @@ async function createSample() {
 function playPause() {
   if (!state.encodedReady || state.mode !== "compare") return;
   if (originalVideo.paused) {
-    originalVideo.play();
+    originalVideo.play().catch(() => {});
+    encodedVideo.play().catch(() => {});
     state.playing = true;
     playButton.textContent = "Pause";
     setStatus("Playing");
     startFrameSync();
   } else {
     originalVideo.pause();
+    encodedVideo.pause();
     state.playing = false;
     playButton.textContent = "Play";
     setStatus("Paused");
@@ -400,20 +470,44 @@ sourceVideo.addEventListener("error", () => {
   setOverlay("Original preview failed (codec unsupported?)");
 });
 
+function syncPlayState() {
+  if (!state.encodedReady) return;
+  if (originalVideo.paused) {
+    if (!encodedVideo.paused) {
+      encodedVideo.pause();
+    }
+  } else if (encodedVideo.paused) {
+    encodedVideo.play().catch(() => {});
+  }
+}
+
 encodedVideo.addEventListener("loadedmetadata", () => {
   encodedVideo.currentTime = 0;
   originalVideo.currentTime = 0;
   updatePlaybackUI();
   resetPan();
+  state.sampleHeight = encodedVideo.videoHeight || originalVideo.videoHeight || 0;
+  updateTargetSnippet();
   if (encodedVideo.muted) {
     encodedVideo.play().then(() => encodedVideo.pause()).catch(() => {});
   }
 });
 
 originalVideo.addEventListener("timeupdate", handleOriginalTimeUpdate);
+originalVideo.addEventListener("play", syncPlayState);
+originalVideo.addEventListener("pause", syncPlayState);
+encodedVideo.addEventListener("play", () => {
+  if (originalVideo.paused) {
+    encodedVideo.pause();
+  }
+});
 
 selectButton.addEventListener("click", selectFile);
 saveArgsButton.addEventListener("click", saveArgs);
+baselineEl.addEventListener("input", () => setConfigDirty(true));
+if (serverUrlEl) {
+  serverUrlEl.addEventListener("input", () => setConfigDirty(true));
+}
 sampleButton.addEventListener("click", createSample);
 playButton.addEventListener("click", playPause);
 previewButton.addEventListener("click", () => setMode("preview"));
@@ -470,6 +564,41 @@ function endDrag(event) {
 videoShell.addEventListener("pointerup", endDrag);
 videoShell.addEventListener("pointercancel", endDrag);
 
+async function sendTargetSample() {
+  if (!targetStatusEl) return;
+  targetStatusEl.textContent = "";
+  const serverUrl = serverUrlEl ? serverUrlEl.value.trim() : "";
+  if (!serverUrl) {
+    targetStatusEl.textContent = "Set server URL";
+    return;
+  }
+  const height = state.sampleHeight || encodedVideo.videoHeight || originalVideo.videoHeight || 0;
+  if (!height || !state.sampleEncodedBytes || !state.sampleDuration) {
+    targetStatusEl.textContent = "Generate a sample first";
+    return;
+  }
+  const mbPerMin = (state.sampleEncodedBytes / (1024 * 1024)) / (state.sampleDuration / 60);
+  try {
+    const res = await fetch(`${serverUrl}/api/targets`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ height, mbPerMin: parseFloat(mbPerMin.toFixed(3)) }),
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(text || "Request failed");
+    }
+    const data = await res.json();
+    targetStatusEl.textContent = `Sent ${height}p → avg ${data.avg} (${data.count} samples)`;
+  } catch (err) {
+    targetStatusEl.textContent = err.message || "Send failed";
+  }
+}
+
+if (sendTargetButton) {
+  sendTargetButton.addEventListener("click", sendTargetSample);
+}
+
 window.addEventListener("load", async () => {
   updateWipe(wipeSlider.value);
   setEncodedVisible(false);
@@ -477,4 +606,6 @@ window.addEventListener("load", async () => {
   resetPan();
   setOverlay("Select a file to begin");
   await loadConfig();
+  await loadDiagnostics();
+  setInterval(loadDiagnostics, 5000);
 });

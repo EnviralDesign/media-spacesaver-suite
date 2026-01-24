@@ -25,7 +25,7 @@ uv pip install -r requirements.txt
 python app.py
 ```
 
-Open `http://127.0.0.1:8855` in a browser.
+Open `http://127.0.0.1:8855` or `http://<host-lan-ip>:8855` in a browser.
 
 ## Notes
 

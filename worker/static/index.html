@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Worker Console</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark"></div>
+        <div>
+          <div class="brand-title">Worker Console</div>
+          <div class="brand-sub">Local Node</div>
+        </div>
+      </div>
+      <div class="status" id="status">Idle</div>
+    </header>
+    <div id="alerts" class="alerts"></div>
+
+    <main class="layout">
+      <section class="panel">
+        <div class="card">
+          <div class="card-title">Status</div>
+          <div class="status-line" id="status-line">Waiting for updates...</div>
+          <div class="status-line" id="status-progress"></div>
+          <div class="status-line" id="status-job"></div>
+          <div class="status-line" id="status-error"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">Config</div>
+          <label class="label">Server URL</label>
+          <input id="cfg-server" type="text" />
+          <label class="label">Name</label>
+          <input id="cfg-name" type="text" />
+          <label class="label">Worker ID</label>
+          <input id="cfg-id" type="text" disabled />
+          <label class="label">Cache Dir</label>
+          <input id="cfg-cache" type="text" />
+          <label class="label">HandBrake Path (optional)</label>
+          <input id="cfg-handbrake" type="text" />
+          <label class="label">Work Hours (JSON)</label>
+          <textarea id="cfg-hours" rows="3"></textarea>
+          <label class="label">Poll Interval Sec</label>
+          <input id="cfg-poll" type="number" min="1" />
+          <button id="save-config" class="btn">Save Config</button>
+          <div class="hint" id="save-status"></div>
+        </div>
+      </section>
+    </main>
+
+    <script src="/static/app.js"></script>
+  </body>
+</html>
