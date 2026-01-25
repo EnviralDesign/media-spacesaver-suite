@@ -327,6 +327,7 @@ def copy_with_cancel(src, dst, server_url, job_id, label, pct_start=None, pct_sp
     copied = 0
     chunk_size = 8 * 1024 * 1024
     last_update = 0.0
+    start_time = time.time()
 
     with src_path.open("rb") as r, dst_path.open("wb") as w:
         while True:
@@ -339,13 +340,30 @@ def copy_with_cancel(src, dst, server_url, job_id, label, pct_start=None, pct_sp
             if total > 0 and now - last_update > 0.5:
                 pct = (copied / total) * 100
                 msg = f"{label} {pct:.1f}%"
+                elapsed = max(0.001, now - start_time)
+                rate = copied / elapsed
+                eta_sec = int((total - copied) / rate) if rate > 0 else None
                 if pct_start is not None and pct_span is not None:
                     overall = pct_start + (pct / 100.0) * pct_span
-                    post_job_progress(server_url, job_id, pct=round(overall, 1), log_tail=msg)
-                    write_status("working", job_id=job_id, error=None, progress_pct=round(overall, 1), progress_message=msg)
+                    post_job_progress(server_url, job_id, pct=round(overall, 1), eta_sec=eta_sec, log_tail=msg)
+                    write_status(
+                        "working",
+                        job_id=job_id,
+                        error=None,
+                        progress_pct=round(overall, 1),
+                        progress_message=msg,
+                        progress_eta_sec=eta_sec,
+                    )
                 else:
-                    post_job_progress(server_url, job_id, log_tail=msg)
-                    write_status("working", job_id=job_id, error=None, progress_pct=None, progress_message=msg)
+                    post_job_progress(server_url, job_id, eta_sec=eta_sec, log_tail=msg)
+                    write_status(
+                        "working",
+                        job_id=job_id,
+                        error=None,
+                        progress_pct=None,
+                        progress_message=msg,
+                        progress_eta_sec=eta_sec,
+                    )
                 last_update = now
             if cancel_requested(server_url, job_id):
                 raise RuntimeError("Cancelled by user")
