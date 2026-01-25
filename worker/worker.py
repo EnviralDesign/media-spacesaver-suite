@@ -21,7 +21,6 @@ DEFAULT_CONFIG_PATH = Path(__file__).resolve().parent / "config.json"
 
 DEFAULT_CONFIG = {
     "serverUrl": "http://127.0.0.1:8856",
-    "name": "worker-1",
     "workerId": "",
     "cacheDir": str(Path(__file__).resolve().parent / "cache"),
     "handbrakePath": "",
@@ -68,6 +67,7 @@ def _ensure_worker_identity(config):
         hostname = socket.gethostname().strip().lower()
         safe_host = re.sub(r"[^a-z0-9]+", "-", hostname).strip("-") or "host"
         config["workerId"] = f"wrk_{safe_host}"
+    config["name"] = config["workerId"]
     return config
 
 
@@ -685,7 +685,6 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", default=str(DEFAULT_CONFIG_PATH))
     parser.add_argument("--server", default=None)
-    parser.add_argument("--name", default=None)
     parser.add_argument("--ui", action="store_true", help="Force enable UI")
     parser.add_argument("--no-ui", action="store_true", help="Disable UI")
     parser.add_argument("--ui-host", default=None)
@@ -696,8 +695,8 @@ def main():
     config = load_config(args.config)
     if args.server:
         config["serverUrl"] = args.server
-    if args.name:
-        config["name"] = args.name
+    # Always derive name from workerId
+    config["name"] = config.get("workerId") or config.get("name")
     if args.ui_host:
         config["uiHost"] = args.ui_host
     if args.ui_port:
@@ -710,7 +709,7 @@ def main():
         ui_enabled = False
 
     server_url = config["serverUrl"]
-    worker_name = config["name"]
+    worker_name = config.get("workerId") or config.get("name")
     worker_id = config.get("workerId") or None
     last_state = None
 

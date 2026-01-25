@@ -4,7 +4,6 @@ const statusProgressEl = document.getElementById("status-progress");
 const statusJobEl = document.getElementById("status-job");
 const statusErrorEl = document.getElementById("status-error");
 const serverEl = document.getElementById("cfg-server");
-const nameEl = document.getElementById("cfg-name");
 const idEl = document.getElementById("cfg-id");
 const cacheEl = document.getElementById("cfg-cache");
 const handbrakeEl = document.getElementById("cfg-handbrake");
@@ -53,7 +52,6 @@ function formatEta(seconds) {
 async function loadConfig() {
   const config = await fetchJson("/api/config");
   serverEl.value = config.serverUrl || "";
-  nameEl.value = config.name || "";
   idEl.value = config.workerId || "";
   cacheEl.value = config.cacheDir || "";
   handbrakeEl.value = config.handbrakePath || "";
@@ -113,7 +111,6 @@ async function saveConfig() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         serverUrl: serverEl.value,
-        name: nameEl.value,
         cacheDir: cacheEl.value,
         handbrakePath: handbrakeEl.value,
         ffmpegPath: ffmpegEl.value,

@@ -14,7 +14,6 @@ STATUS_PATH = BASE_DIR / "status.json"
 
 DEFAULT_CONFIG = {
     "serverUrl": "http://127.0.0.1:8856",
-    "name": "worker-1",
     "workerId": "",
     "cacheDir": str(BASE_DIR / "cache"),
     "handbrakePath": "",
@@ -26,7 +25,6 @@ DEFAULT_CONFIG = {
 
 class ConfigRequest(BaseModel):
     serverUrl: str | None = None
-    name: str | None = None
     workerId: str | None = None
     cacheDir: str | None = None
     handbrakePath: str | None = None

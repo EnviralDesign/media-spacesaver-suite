@@ -287,8 +287,8 @@ textarea {
 }
 
 .badge.idle {
-  background: #e5efe9;
-  color: #1e5a45;
+  background: #eceaea;
+  color: #6a6662;
 }
 
 .badge.queued {
@@ -302,8 +302,8 @@ textarea {
 }
 
 .badge.done {
-  background: #dcebe2;
-  color: #245a3c;
+  background: #d9f0df;
+  color: #1e6b3c;
 }
 
 .badge.failed {
