@@ -6,6 +6,7 @@ from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from datetime import datetime, timezone
+import math
 
 from state import load_state, now_iso, new_id, update_state, default_state
 from scan import compute_ratio, list_media_files, probe_media, ffprobe_path
@@ -55,15 +56,26 @@ def _parse_iso(value):
         return None
 
 
-def cleanup_stale_jobs(state, max_age_sec=180):
+def cleanup_stale_jobs(state, max_age_sec=180, worker_grace_sec=120):
     now = datetime.now(timezone.utc)
     jobs = state.get("jobs") or []
     items = state.get("items") or []
+    workers = state.get("workers") or []
+    workers_by_id = {worker.get("id"): worker for worker in workers}
     items_by_id = {item.get("id"): item for item in items}
     updated = False
 
     for job in jobs:
         if job.get("status") not in {"claimed", "running"}:
+            continue
+        worker = workers_by_id.get(job.get("workerId"))
+        worker_recent = False
+        if worker:
+            last_hb = _parse_iso(worker.get("lastHeartbeatAt"))
+            if last_hb:
+                hb_age = (now - last_hb).total_seconds()
+                worker_recent = hb_age < worker_grace_sec
+        if worker_recent:
             continue
         last_update = _parse_iso(job.get("lastUpdateAt")) or _parse_iso(job.get("claimedAt"))
         if not last_update:
@@ -666,19 +678,25 @@ def job_progress(job_id: str, payload: JobProgress):
         jobs = state.get("jobs") or []
         job = next((j for j in jobs if j.get("id") == job_id), None)
         if not job:
-            raise HTTPException(status_code=404, detail="Job not found")
+            return None
         progress = job.get("progress") or {}
         if payload.pct is not None:
-            progress["pct"] = payload.pct
+            if math.isfinite(payload.pct):
+                progress["pct"] = payload.pct
         if payload.etaSec is not None:
             progress["etaSec"] = payload.etaSec
         if payload.logTail is not None:
-            progress["logTail"] = payload.logTail
+            log_tail = str(payload.logTail)
+            if len(log_tail) > 200:
+                log_tail = log_tail[:200] + "..."
+            progress["logTail"] = log_tail
         job["progress"] = progress
         job["lastUpdateAt"] = now_iso()
         return job
 
     job = update_state(mutator)
+    if not job:
+        return Response(status_code=204)
     return JSONResponse(job)
 
 
@@ -739,4 +757,4 @@ def job_fail(job_id: str, payload: JobUpdate):
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run("app:app", host="0.0.0.0", port=8856, reload=True)
+    uvicorn.run("app:app", host="0.0.0.0", port=8856, reload=True, log_level="warning", access_log=False)
