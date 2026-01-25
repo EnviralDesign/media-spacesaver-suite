@@ -33,7 +33,7 @@ def default_state():
         "version": 1,
         "config": {
             "baselineArgs": compare_baseline
-            or "-f av_mkv -e x265_10bit --encoder-preset slow -q 20 --audio-lang-list eng --first-audio -E copy --subtitle-lang-list eng --first-subtitle --crop 0:0:0:0",
+            or "-f av_mkv -e x265_10bit --encoder-preset medium -q 20 --audio-lang-list eng --first-audio -E copy --subtitle-lang-list eng --first-subtitle --crop 0:0:0:0",
             "ffprobePath": "",
             "targetMbPerMinByHeight": {
                 "480": 6,
