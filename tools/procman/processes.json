@@ -1,0 +1,29 @@
+{
+  "stack_name": "Space Saver",
+  "processes": [
+    {
+      "id": "53eb12cd-34ce-4cd4-9009-e9eac656205b",
+      "name": "Server",
+      "command": "uv run app.py",
+      "working_directory": "C:\\repos\\media-spacesaver-suite\\server",
+      "process_type": "Process",
+      "auto_start": false
+    },
+    {
+      "id": "83401cdd-9c08-4af5-9e39-c65d579378d3",
+      "name": "Worker",
+      "command": "uv run worker.py",
+      "working_directory": "C:\\repos\\media-spacesaver-suite\\worker",
+      "process_type": "Process",
+      "auto_start": false
+    },
+    {
+      "id": "bfc81a1a-fd19-47dc-8d7d-ca61e5479d8c",
+      "name": "Compare Tool",
+      "command": "uv run app.py",
+      "working_directory": "C:\\repos\\media-spacesaver-suite\\tools\\compare",
+      "process_type": "Process",
+      "auto_start": false
+    }
+  ]
+}

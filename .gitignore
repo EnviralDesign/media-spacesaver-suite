@@ -14,3 +14,5 @@
 /tools/compare/config.json
 
 *__pycache__*
+
+*simple-rust-process-manager*
