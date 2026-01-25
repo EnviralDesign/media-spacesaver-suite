@@ -268,16 +268,16 @@ async function loadItems() {
     const ratio = item.ratio || {};
     const row = document.createElement("tr");
     row.innerHTML = `
-      <td><input type="checkbox" data-ready="${item.id}" ${item.ready ? "checked" : ""} /></td>
-      <td>${badgeFor(item.status)}</td>
-      <td>${item.encodedBySpacesaver ? `<span class="badge tag">MS</span>` : "-"}</td>
-      <td title="${item.path}">${item.path}</td>
-      <td>${formatBytes(item.sizeBytes)}</td>
-      <td>${formatDuration(item.durationSec)}</td>
-      <td>${item.width || 0}x${item.height || 0}</td>
-      <td>${formatBytes(ratio.savingsBytes || 0)}</td>
-      <td>${((ratio.savingsPct || 0) * 100).toFixed(1)}%</td>
-      <td>
+      <td data-label="Ready"><input type="checkbox" data-ready="${item.id}" ${item.ready ? "checked" : ""} /></td>
+      <td data-label="Status">${badgeFor(item.status)}</td>
+      <td data-label="Tagged">${item.encodedBySpacesaver ? `<span class="badge tag">MS</span>` : "-"}</td>
+      <td data-label="Path" title="${item.path}">${item.path}</td>
+      <td data-label="Size">${formatBytes(item.sizeBytes)}</td>
+      <td data-label="Duration">${formatDuration(item.durationSec)}</td>
+      <td data-label="Res">${item.width || 0}x${item.height || 0}</td>
+      <td data-label="Savings">${formatBytes(ratio.savingsBytes || 0)}</td>
+      <td data-label="%">${((ratio.savingsPct || 0) * 100).toFixed(1)}%</td>
+      <td data-label="Actions">
         <div class="row-actions">
           <button class="btn ghost" data-reset="${item.id}">Reset</button>
           <button class="btn danger" data-delete="${item.id}">✕</button>
@@ -393,17 +393,17 @@ async function loadJobs() {
     }
     const row = document.createElement("tr");
     row.innerHTML = `
-      <td>${badgeForJob(job)}</td>
-      <td>${pct}</td>
-      <td>${eta}</td>
-      <td>${job.workerName || job.workerId || "-"}</td>
-      <td title="${job.itemPath || job.itemId || ""}">${job.itemPath || job.itemId || "-"}</td>
-      <td>${formatTimestamp(job.claimedAt)}</td>
-      <td>${formatTimestamp(job.startedAt)}</td>
-      <td>${formatTimestamp(job.finishedAt)}</td>
-      <td class="message-cell" title="${msg}">${msg}</td>
-      <td class="error-cell">${job.error || "-"}</td>
-      <td>
+      <td data-label="Status">${badgeForJob(job)}</td>
+      <td data-label="Progress">${pct}</td>
+      <td data-label="ETA">${eta}</td>
+      <td data-label="Worker">${job.workerName || job.workerId || "-"}</td>
+      <td data-label="Item" title="${job.itemPath || job.itemId || ""}">${job.itemPath || job.itemId || "-"}</td>
+      <td data-label="Claimed">${formatTimestamp(job.claimedAt)}</td>
+      <td data-label="Started">${formatTimestamp(job.startedAt)}</td>
+      <td data-label="Finished">${formatTimestamp(job.finishedAt)}</td>
+      <td data-label="Message" class="message-cell" title="${msg}">${msg}</td>
+      <td data-label="Error" class="error-cell">${job.error || "-"}</td>
+      <td data-label="Actions">
         <button class="btn danger" data-job-delete="${job.id}">✕</button>
       </td>
     `;
