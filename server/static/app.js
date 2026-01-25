@@ -260,7 +260,7 @@ async function loadItems() {
   const items = await fetchJson(`/api/items?sort=${currentSort}`);
   itemsEl.innerHTML = "";
   if (!items.length) {
-    itemsEl.innerHTML = "<tr><td colspan=\"9\" class=\"hint\">No items scanned. Click Scan on an entry.</td></tr>";
+    itemsEl.innerHTML = "<tr><td colspan=\"10\" class=\"hint\">No items scanned. Click Scan on an entry.</td></tr>";
     return;
   }
 
@@ -270,6 +270,7 @@ async function loadItems() {
     row.innerHTML = `
       <td><input type="checkbox" data-ready="${item.id}" ${item.ready ? "checked" : ""} /></td>
       <td>${badgeFor(item.status)}</td>
+      <td>${item.encodedBySpacesaver ? `<span class="badge tag">MS</span>` : "-"}</td>
       <td title="${item.path}">${item.path}</td>
       <td>${formatBytes(item.sizeBytes)}</td>
       <td>${formatDuration(item.durationSec)}</td>

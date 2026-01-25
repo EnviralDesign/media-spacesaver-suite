@@ -296,6 +296,8 @@ def scan_entry(entry_id: str):
                     "videoCodec": None,
                     "audioCodecs": [],
                     "subtitleLangs": [],
+                    "encodedBy": "",
+                    "encodedBySpacesaver": False,
                     "scanAt": None,
                     "ready": False,
                     "status": "idle",

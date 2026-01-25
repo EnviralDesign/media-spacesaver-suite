@@ -416,6 +416,8 @@ def run_handbrake(cmd, server_url, job_id, progress_cb=None):
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         bufsize=1,
     )
 
@@ -429,6 +431,8 @@ def run_handbrake(cmd, server_url, job_id, progress_cb=None):
         try:
             for raw_line in proc.stdout:
                 queue.put(raw_line)
+        except Exception as exc:
+            queue.put(f"[reader error] {exc}")
         finally:
             queue.put(sentinel)
 

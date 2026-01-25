@@ -40,6 +40,8 @@ def probe_media(path, explicit_ffprobe=None):
 
     streams = data.get("streams") or []
     fmt = data.get("format") or {}
+    tags = fmt.get("tags") or {}
+    tags_lower = {str(k).lower(): str(v) for k, v in tags.items()}
 
     video_stream = next((s for s in streams if s.get("codec_type") == "video"), None)
     audio_streams = [s for s in streams if s.get("codec_type") == "audio"]
@@ -71,6 +73,14 @@ def probe_media(path, explicit_ffprobe=None):
         if lang:
             subtitle_langs.append(lang)
 
+    encoded_by = tags_lower.get("encoded_by") or tags_lower.get("encodedby") or tags_lower.get("encoder")
+    comment = tags_lower.get("comment") or ""
+    spacesaver = False
+    if encoded_by and "mediaspacesaver" in encoded_by.lower():
+        spacesaver = True
+    if "spacesaver=1" in comment.lower():
+        spacesaver = True
+
     return {
         "durationSec": duration_sec,
         "width": width,
@@ -79,6 +89,8 @@ def probe_media(path, explicit_ffprobe=None):
         "videoCodec": (video_stream or {}).get("codec_name"),
         "audioCodecs": audio_codecs,
         "subtitleLangs": subtitle_langs,
+        "encodedBy": encoded_by or "",
+        "encodedBySpacesaver": spacesaver,
     }
 
 

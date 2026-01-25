@@ -311,6 +311,11 @@ textarea {
   color: #8a2d2d;
 }
 
+.badge.tag {
+  background: #e6f0fb;
+  color: #2a4f8f;
+}
+
 .badge.cancelling {
   background: #f7ead6;
   color: #8c5a18;
