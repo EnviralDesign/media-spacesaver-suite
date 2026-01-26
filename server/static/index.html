@@ -24,111 +24,148 @@
 
     <main class="layout">
       <section class="sidebar">
-        <div class="card">
-          <div class="card-title">Add Entry</div>
-          <label class="label">Path</label>
-          <input id="entry-path" type="text" placeholder="X:\Media\Movies" />
-          <label class="label">Name (optional)</label>
-          <input id="entry-name" type="text" placeholder="Movies" />
-          <label class="label">Entry Args (optional)</label>
-          <textarea id="entry-args" rows="2" placeholder="--encoder-preset medium"></textarea>
-          <button id="add-entry" class="btn primary">Add Entry</button>
-        </div>
+        <div class="card sidebar-panel" data-tabs="sidebar">
+          <div class="tab-bar" role="tablist" aria-label="Sidebar sections">
+            <button class="tab active" data-tab="entries" role="tab" aria-controls="sidebar-entries" aria-selected="true">
+              Entries
+            </button>
+            <button class="tab" data-tab="config" role="tab" aria-controls="sidebar-config" aria-selected="false">
+              Config
+            </button>
+            <button class="tab" data-tab="workers" role="tab" aria-controls="sidebar-workers" aria-selected="false">
+              Workers
+            </button>
+          </div>
+          <div class="tab-panels">
+            <div class="tab-panel active entries-panel" id="sidebar-entries" data-panel="entries" role="tabpanel">
+              <div class="panel-block">
+                <div class="card-title">Add Entry</div>
+                <label class="label">Path</label>
+                <input id="entry-path" type="text" placeholder="X:\Media\Movies" />
+                <label class="label">Name (optional)</label>
+                <input id="entry-name" type="text" placeholder="Movies" />
+                <label class="label">Entry Args (optional)</label>
+                <textarea id="entry-args" rows="2" placeholder="--encoder-preset medium"></textarea>
+                <button id="add-entry" class="btn primary">Add Entry</button>
+              </div>
 
-        <div class="card">
-          <div class="card-title">Entries</div>
-          <div class="toolbar">
-            <div class="toolbar-group">
-              <button id="scan-all" class="btn ghost">Scan All</button>
+              <div class="panel-block entries-list-block">
+                <div class="card-title">Entries</div>
+                <div class="toolbar">
+                  <div class="toolbar-group">
+                    <button id="scan-all" class="btn ghost">Scan All</button>
+                  </div>
+                </div>
+                <div id="entries" class="entry-list"></div>
+              </div>
+            </div>
+
+            <div class="tab-panel scrollable" id="sidebar-config" data-panel="config" role="tabpanel">
+              <div class="panel-block">
+                <div class="card-title">Config</div>
+                <label class="label">Baseline args</label>
+                <textarea id="config-baseline" rows="4"></textarea>
+                <label class="label">FFprobe path (optional)</label>
+                <input id="config-ffprobe" type="text" placeholder="C:\ffmpeg\bin\ffprobe.exe" />
+                <label class="label">Target MB/min by height (JSON)</label>
+                <textarea id="config-buckets" rows="4"></textarea>
+                <div class="row">
+                  <button id="clear-target-samples" class="btn danger">Reset Target Table</button>
+                  <div class="hint" id="config-samples"></div>
+                </div>
+                <button id="save-config" class="btn">Save Config</button>
+                <div class="hint" id="config-status"></div>
+              </div>
+            </div>
+
+            <div class="tab-panel" id="sidebar-workers" data-panel="workers" role="tabpanel">
+              <div class="panel-block workers-block">
+                <div class="card-title">Workers</div>
+                <div id="workers" class="worker-list"></div>
+              </div>
             </div>
           </div>
-          <div id="entries" class="entry-list"></div>
-        </div>
-
-        <div class="card">
-          <div class="card-title">Config</div>
-          <label class="label">Baseline args</label>
-          <textarea id="config-baseline" rows="4"></textarea>
-          <label class="label">FFprobe path (optional)</label>
-          <input id="config-ffprobe" type="text" placeholder="C:\ffmpeg\bin\ffprobe.exe" />
-          <label class="label">Target MB/min by height (JSON)</label>
-          <textarea id="config-buckets" rows="4"></textarea>
-          <div class="row">
-            <button id="clear-target-samples" class="btn danger">Reset Target Table</button>
-            <div class="hint" id="config-samples"></div>
-          </div>
-          <button id="save-config" class="btn">Save Config</button>
-          <div class="hint" id="config-status"></div>
-        </div>
-
-        <div class="card">
-          <div class="card-title">Workers</div>
-          <div id="workers" class="worker-list"></div>
         </div>
       </section>
 
       <section class="content">
-        <div class="card">
-          <div class="card-title">Items</div>
-          <div class="toolbar">
-            <div class="toolbar-group">
-              <button id="sort-savings" class="btn ghost">Sort by Savings</button>
-              <button id="sort-percent" class="btn ghost">Sort by %</button>
-            </div>
-            <div class="toolbar-group">
-              <button id="refresh-items" class="btn">Refresh</button>
-            </div>
+        <div class="card content-panel" data-tabs="content">
+          <div class="tab-bar" role="tablist" aria-label="Content views">
+            <button class="tab active" data-tab="items" role="tab" aria-controls="content-items" aria-selected="true">
+              Items
+            </button>
+            <button class="tab" data-tab="jobs" role="tab" aria-controls="content-jobs" aria-selected="false">
+              Jobs
+            </button>
           </div>
-          <div class="table-wrap scrollable">
-            <table>
-              <thead>
-                <tr>
-                  <th>Ready</th>
-                  <th>Status</th>
-                  <th>Tagged</th>
-                  <th>Path</th>
-                  <th>Size</th>
-                  <th>Duration</th>
-                  <th>Res</th>
-                  <th>Savings</th>
-                  <th>%</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody id="items"></tbody>
-            </table>
-          </div>
-        </div>
+          <div class="tab-panels">
+            <div class="tab-panel active" id="content-items" data-panel="items" role="tabpanel">
+              <div class="panel-header">
+                <div class="card-title">Items</div>
+                <div class="toolbar">
+                  <div class="toolbar-group">
+                    <button id="sort-savings" class="btn ghost">Sort by Savings</button>
+                    <button id="sort-percent" class="btn ghost">Sort by %</button>
+                  </div>
+                  <div class="toolbar-group">
+                    <button id="refresh-items" class="btn">Refresh</button>
+                  </div>
+                </div>
+              </div>
+              <div class="table-wrap scrollable fill">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Ready</th>
+                      <th>Status</th>
+                      <th>Tagged</th>
+                      <th>Path</th>
+                      <th>Size</th>
+                      <th>Duration</th>
+                      <th>Res</th>
+                      <th>Savings</th>
+                      <th>%</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody id="items"></tbody>
+                </table>
+              </div>
+            </div>
 
-        <div class="card">
-          <div class="card-title">Jobs</div>
-          <div class="toolbar">
-            <div class="toolbar-group">
-              <button id="refresh-jobs" class="btn">Refresh</button>
+            <div class="tab-panel" id="content-jobs" data-panel="jobs" role="tabpanel">
+              <div class="panel-header">
+                <div class="card-title">Jobs</div>
+                <div class="toolbar">
+                  <div class="toolbar-group">
+                    <button id="refresh-jobs" class="btn">Refresh</button>
+                  </div>
+                  <div class="toolbar-group">
+                    <button id="cancel-all" class="btn danger">Cancel All</button>
+                  </div>
+                </div>
+              </div>
+              <div class="table-wrap scrollable fill">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Status</th>
+                      <th>Progress</th>
+                      <th>ETA</th>
+                      <th>Worker</th>
+                      <th>Item</th>
+                      <th>Claimed</th>
+                      <th>Started</th>
+                      <th>Finished</th>
+                      <th>Message</th>
+                      <th>Error</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody id="jobs"></tbody>
+                </table>
+              </div>
             </div>
-            <div class="toolbar-group">
-              <button id="cancel-all" class="btn danger">Cancel All</button>
-            </div>
-          </div>
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Status</th>
-                  <th>Progress</th>
-                  <th>ETA</th>
-                  <th>Worker</th>
-                  <th>Item</th>
-                  <th>Claimed</th>
-                  <th>Started</th>
-                  <th>Finished</th>
-                  <th>Message</th>
-                  <th>Error</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody id="jobs"></tbody>
-            </table>
           </div>
         </div>
       </section>

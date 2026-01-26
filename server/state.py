@@ -1,5 +1,7 @@
 import json
+import os
 import threading
+import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -101,10 +103,25 @@ def _read_state_no_lock():
 
 def _write_state_no_lock(state):
     DATA_DIR.mkdir(parents=True, exist_ok=True)
-    tmp_path = STATE_PATH.with_suffix(".json.tmp")
+    tmp_path = STATE_PATH.with_name(f"{STATE_PATH.name}.{os.getpid()}.{threading.get_ident()}.tmp")
     with tmp_path.open("w", encoding="utf-8") as f:
         json.dump(state, f, indent=2)
-    tmp_path.replace(STATE_PATH)
+    try:
+        for attempt in range(6):
+            try:
+                tmp_path.replace(STATE_PATH)
+                return
+            except PermissionError:
+                if attempt >= 5:
+                    break
+                time.sleep(0.02 * (attempt + 1))
+        with STATE_PATH.open("w", encoding="utf-8") as f:
+            json.dump(state, f, indent=2)
+    finally:
+        try:
+            tmp_path.unlink(missing_ok=True)
+        except OSError:
+            pass
 
 
 def load_state():

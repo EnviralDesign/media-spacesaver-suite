@@ -449,6 +449,39 @@ async function loadJobs() {
   });
 }
 
+function setupTabs(container, storageKey) {
+  if (!container) return;
+  const buttons = Array.from(container.querySelectorAll("[data-tab]"));
+  const panels = Array.from(container.querySelectorAll("[data-panel]"));
+  if (!buttons.length || !panels.length) return;
+
+  const activate = (name) => {
+    const target = name || buttons[0].dataset.tab;
+    buttons.forEach((btn) => {
+      const active = btn.dataset.tab === target;
+      btn.classList.toggle("active", active);
+      btn.setAttribute("aria-selected", active ? "true" : "false");
+      btn.setAttribute("tabindex", active ? "0" : "-1");
+    });
+    panels.forEach((panel) => {
+      const active = panel.dataset.panel === target;
+      panel.classList.toggle("active", active);
+      panel.setAttribute("aria-hidden", active ? "false" : "true");
+    });
+    if (storageKey) {
+      localStorage.setItem(storageKey, target);
+    }
+  };
+
+  buttons.forEach((btn) => {
+    btn.addEventListener("click", () => activate(btn.dataset.tab));
+  });
+
+  const saved = storageKey ? localStorage.getItem(storageKey) : null;
+  const initial = buttons.some((btn) => btn.dataset.tab === saved) ? saved : buttons[0].dataset.tab;
+  activate(initial);
+}
+
 sortSavingsBtn.addEventListener("click", () => {
   currentSort = "savingsBytes";
   loadItems();
@@ -501,6 +534,8 @@ clearTargetSamplesBtn.addEventListener("click", async () => {
 
 async function init() {
   try {
+    setupTabs(document.querySelector("[data-tabs='sidebar']"), "sidebarTab");
+    setupTabs(document.querySelector("[data-tabs='content']"), "contentTab");
     await loadConfig();
     await loadEntries();
     await loadItems();
