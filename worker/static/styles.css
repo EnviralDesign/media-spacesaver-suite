@@ -82,6 +82,42 @@ body {
   color: var(--muted);
 }
 
+.status-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+
+.badge {
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--muted);
+}
+
+.badge.active {
+  background: #e7f4e9;
+  border-color: #a6d4b2;
+  color: #2b6b3b;
+}
+
+.badge.off {
+  background: #f7e7e7;
+  border-color: #e2a9a9;
+  color: #7a2b2b;
+}
+
+.badge.always {
+  background: #e8eef8;
+  border-color: #b3c6e5;
+  color: #2e4b7a;
+}
+
 .layout {
   padding: 18px 24px 32px;
   animation: floatIn 0.5s ease;

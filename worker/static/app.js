@@ -1,4 +1,5 @@
 const statusEl = document.getElementById("status");
+const hoursBadgeEl = document.getElementById("hours-badge");
 const statusLineEl = document.getElementById("status-line");
 const statusProgressEl = document.getElementById("status-progress");
 const statusJobEl = document.getElementById("status-job");
@@ -14,6 +15,7 @@ const pollEl = document.getElementById("cfg-poll");
 const saveBtn = document.getElementById("save-config");
 const saveStatusEl = document.getElementById("save-status");
 const alertsEl = document.getElementById("alerts");
+let currentConfig = null;
 
 async function fetchJson(url, options) {
   const res = await fetch(url, options);
@@ -51,6 +53,7 @@ function formatEta(seconds) {
 
 async function loadConfig() {
   const config = await fetchJson("/api/config");
+  currentConfig = config;
   serverEl.value = config.serverUrl || "";
   idEl.value = config.workerId || "";
   cacheEl.value = config.cacheDir || "";
@@ -58,6 +61,7 @@ async function loadConfig() {
   ffmpegEl.value = config.ffmpegPath || "";
   renderHours(config.workHours || []);
   pollEl.value = config.pollIntervalSec || 10;
+  updateHoursBadge();
 }
 
 function renderHours(hours) {
@@ -103,10 +107,62 @@ function collectHours() {
   return hours;
 }
 
+function withinWorkHours(workHours, now = new Date()) {
+  if (!Array.isArray(workHours) || workHours.length === 0) {
+    return true;
+  }
+  const current = now.getHours() * 60 + now.getMinutes();
+  let hasValid = false;
+  for (const block of workHours) {
+    if (!block || typeof block !== "object") continue;
+    const start = block.start;
+    const end = block.end;
+    if (!start || !end) continue;
+    const [startH, startM] = start.split(":").map((v) => parseInt(v, 10));
+    const [endH, endM] = end.split(":").map((v) => parseInt(v, 10));
+    if (!Number.isFinite(startH) || !Number.isFinite(startM) || !Number.isFinite(endH) || !Number.isFinite(endM)) {
+      continue;
+    }
+    hasValid = true;
+    const startMin = startH * 60 + startM;
+    const endMin = endH * 60 + endM;
+    if (startMin <= endMin) {
+      if (current >= startMin && current <= endMin) {
+        return true;
+      }
+    } else {
+      if (current >= startMin || current <= endMin) {
+        return true;
+      }
+    }
+  }
+  return !hasValid;
+}
+
+function updateHoursBadge() {
+  if (!hoursBadgeEl) return;
+  const workHours = currentConfig && Array.isArray(currentConfig.workHours) ? currentConfig.workHours : [];
+  const hasWindows = Array.isArray(workHours) && workHours.length > 0;
+  const active = withinWorkHours(workHours);
+  hoursBadgeEl.classList.remove("active", "off", "always");
+  if (!hasWindows) {
+    hoursBadgeEl.classList.add("always");
+    hoursBadgeEl.textContent = "Hours: 24/7";
+    return;
+  }
+  if (active) {
+    hoursBadgeEl.classList.add("active");
+    hoursBadgeEl.textContent = "Hours: Active";
+  } else {
+    hoursBadgeEl.classList.add("off");
+    hoursBadgeEl.textContent = "Hours: Off-hours";
+  }
+}
+
 async function saveConfig() {
   saveStatusEl.textContent = "Saving...";
   try {
-    await fetchJson("/api/config", {
+    const nextConfig = await fetchJson("/api/config", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -118,7 +174,11 @@ async function saveConfig() {
         pollIntervalSec: parseInt(pollEl.value || "10", 10),
       }),
     });
-    saveStatusEl.textContent = "Saved (restart worker to apply)";
+    currentConfig = nextConfig;
+    updateHoursBadge();
+    const pollSeconds = parseInt(pollEl.value || "10", 10);
+    const suffix = Number.isFinite(pollSeconds) ? ` (applies within ~${pollSeconds}s)` : " (applies soon)";
+    saveStatusEl.textContent = `Saved${suffix}`;
   } catch (err) {
     saveStatusEl.textContent = err.message || "Error";
   }
@@ -173,8 +233,10 @@ async function init() {
   await loadConfig();
   await loadStatus();
   await loadDiagnostics();
+  updateHoursBadge();
 }
 
 init();
 setInterval(loadStatus, 2000);
 setInterval(loadDiagnostics, 5000);
+setInterval(updateHoursBadge, 30000);

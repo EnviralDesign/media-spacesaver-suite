@@ -1,4 +1,5 @@
 const statusEl = document.getElementById("status");
+const scanStatusEl = document.getElementById("scan-status");
 const entryPathEl = document.getElementById("entry-path");
 const entryNameEl = document.getElementById("entry-name");
 const entryArgsEl = document.getElementById("entry-args");
@@ -115,6 +116,24 @@ async function loadDiagnostics() {
     alertsEl.innerHTML = warnings.map((msg) => `<div class="alert warn">${msg}</div>`).join("");
   } catch (_) {
     alertsEl.innerHTML = "";
+  }
+}
+
+async function loadScanStatus() {
+  if (!scanStatusEl) return;
+  try {
+    const scan = await fetchJson("/api/scan-status");
+    if (!scan || !scan.active) {
+      scanStatusEl.textContent = "Scan: idle";
+      return;
+    }
+    const total = scan.total || 0;
+    const done = scan.done || 0;
+    const pct = total ? Math.round((done / total) * 100) : 0;
+    const name = scan.entryName ? `${scan.entryName}: ` : "";
+    scanStatusEl.textContent = `Scan ${name}${done}/${total} (${pct}%)`;
+  } catch (_) {
+    scanStatusEl.textContent = "Scan: -";
   }
 }
 
@@ -488,6 +507,7 @@ async function init() {
     await loadWorkers();
     await loadJobs();
     await loadDiagnostics();
+    await loadScanStatus();
   } catch (err) {
     setStatus(err.message || "Load failed");
   }
@@ -498,3 +518,4 @@ setInterval(loadWorkers, 1000);
 setInterval(loadJobs, 1000);
 setInterval(loadItems, 1000);
 setInterval(loadDiagnostics, 5000);
+setInterval(loadScanStatus, 1000);

@@ -178,6 +178,12 @@ def diagnostics():
     )
 
 
+@app.get("/api/scan-status")
+def scan_status():
+    state = load_state()
+    return JSONResponse(state.get("scanStatus") or {})
+
+
 @app.post("/api/config")
 def set_config(payload: ConfigRequest):
     def mutator(state):
@@ -275,69 +281,155 @@ def delete_entry(entry_id: str):
 
 @app.post("/api/entries/{entry_id}/scan")
 def scan_entry(entry_id: str):
-    def mutator(state):
-        entries = state.get("entries") or []
-        entry = next((e for e in entries if e.get("id") == entry_id), None)
-        if not entry:
-            raise HTTPException(status_code=404, detail="Entry not found")
+    state = load_state()
+    entries = state.get("entries") or []
+    entry = next((e for e in entries if e.get("id") == entry_id), None)
+    if not entry:
+        raise HTTPException(status_code=404, detail="Entry not found")
 
-        config = state.get("config") or {}
-        items = state.get("items") or []
-        items_by_path = {item.get("path"): item for item in items}
+    config = state.get("config") or {}
+    entry_name = entry.get("name") or "Entry"
+    entry_path = entry.get("path")
+    files = list_media_files(entry_path)
+    total = len(files)
+    started_at = now_iso()
 
-        found_paths = set()
-        files = list_media_files(entry.get("path"))
+    update_state(
+        lambda state: state.update(
+            {
+                "scanStatus": {
+                    "active": True,
+                    "entryId": entry_id,
+                    "entryName": entry_name,
+                    "total": total,
+                    "done": 0,
+                    "currentPath": None,
+                    "startedAt": started_at,
+                    "updatedAt": started_at,
+                    "finishedAt": None,
+                }
+            }
+        )
+        or state
+    )
+
+    items_snapshot = {item.get("path"): item for item in (state.get("items") or [])}
+    found_paths = set()
+    done = 0
+
+    try:
         for path in files:
             path_str = str(path)
             found_paths.add(path_str)
-            stat = path.stat()
+            done += 1
+            try:
+                stat = path.stat()
+            except OSError:
+                update_state(
+                    lambda state: state.update(
+                        {
+                            "scanStatus": {
+                                **(state.get("scanStatus") or {}),
+                                "active": True,
+                                "entryId": entry_id,
+                                "entryName": entry_name,
+                                "total": total,
+                                "done": done,
+                                "currentPath": path_str,
+                                "updatedAt": now_iso(),
+                            }
+                        }
+                    )
+                    or state
+                )
+                continue
+
             fingerprint = f"{stat.st_size}:{int(stat.st_mtime)}"
+            existing = items_snapshot.get(path_str) or {}
+            needs_scan = existing.get("sourceFingerprint") != fingerprint or not existing.get("scanAt")
+            metadata = probe_media(path_str, config.get("ffprobePath")) if needs_scan else {}
 
-            item = items_by_path.get(path_str)
-            if not item:
-                item = {
-                    "id": new_id("itm"),
+            def mutator(state):
+                items = state.get("items") or []
+                item = next((i for i in items if i.get("path") == path_str), None)
+                if not item:
+                    item = {
+                        "id": new_id("itm"),
+                        "entryId": entry_id,
+                        "path": path_str,
+                        "sizeBytes": stat.st_size,
+                        "mtime": int(stat.st_mtime),
+                        "durationSec": 0,
+                        "width": 0,
+                        "height": 0,
+                        "fps": 0,
+                        "videoCodec": None,
+                        "audioCodecs": [],
+                        "subtitleLangs": [],
+                        "encodedBy": "",
+                        "encodedBySpacesaver": False,
+                        "scanAt": None,
+                        "ready": False,
+                        "status": "idle",
+                        "lastJobId": None,
+                        "lastError": "",
+                        "lastTranscodeAt": None,
+                        "transcodeCount": 0,
+                        "sourceFingerprint": fingerprint,
+                        "ratio": {"targetBytes": 0, "savingsBytes": 0, "savingsPct": 0},
+                    }
+                    items.append(item)
+
+                if item.get("sourceFingerprint") != fingerprint or not item.get("scanAt"):
+                    item.update(metadata)
+                    item["scanAt"] = now_iso()
+                    item["sizeBytes"] = stat.st_size
+                    item["mtime"] = int(stat.st_mtime)
+                    item["sourceFingerprint"] = fingerprint
+                    item["ratio"] = compute_ratio(item, config)
+
+                scan_status = state.get("scanStatus") or {}
+                scan_status.update(
+                    {
+                        "active": True,
+                        "entryId": entry_id,
+                        "entryName": entry_name,
+                        "total": total,
+                        "done": done,
+                        "currentPath": path_str,
+                        "updatedAt": now_iso(),
+                    }
+                )
+                state["scanStatus"] = scan_status
+                state["items"] = items
+                return {"ok": True}
+
+            update_state(mutator)
+    finally:
+        def finish_mutator(state):
+            entries = state.get("entries") or []
+            entry = next((e for e in entries if e.get("id") == entry_id), None)
+            if entry:
+                entry["lastScanAt"] = now_iso()
+                entry["updatedAt"] = now_iso()
+
+            scan_status = state.get("scanStatus") or {}
+            scan_status.update(
+                {
+                    "active": False,
                     "entryId": entry_id,
-                    "path": path_str,
-                    "sizeBytes": stat.st_size,
-                    "mtime": int(stat.st_mtime),
-                    "durationSec": 0,
-                    "width": 0,
-                    "height": 0,
-                    "fps": 0,
-                    "videoCodec": None,
-                    "audioCodecs": [],
-                    "subtitleLangs": [],
-                    "encodedBy": "",
-                    "encodedBySpacesaver": False,
-                    "scanAt": None,
-                    "ready": False,
-                    "status": "idle",
-                    "lastJobId": None,
-                    "lastError": "",
-                    "lastTranscodeAt": None,
-                    "transcodeCount": 0,
-                    "sourceFingerprint": fingerprint,
-                    "ratio": {"targetBytes": 0, "savingsBytes": 0, "savingsPct": 0},
+                    "entryName": entry_name,
+                    "total": total,
+                    "done": done,
+                    "currentPath": None,
+                    "finishedAt": now_iso(),
                 }
-                items.append(item)
-                items_by_path[path_str] = item
+            )
+            state["scanStatus"] = scan_status
+            return {"found": len(found_paths), "entryId": entry_id}
 
-            if item.get("sourceFingerprint") != fingerprint or not item.get("scanAt"):
-                metadata = probe_media(path_str, config.get("ffprobePath"))
-                item.update(metadata)
-                item["scanAt"] = now_iso()
-                item["sizeBytes"] = stat.st_size
-                item["mtime"] = int(stat.st_mtime)
-                item["sourceFingerprint"] = fingerprint
-                item["ratio"] = compute_ratio(item, config)
+        result = update_state(finish_mutator)
 
-        entry["lastScanAt"] = now_iso()
-        entry["updatedAt"] = now_iso()
-        state["items"] = items
-        return {"found": len(found_paths), "entryId": entry_id}
-
-    result = update_state(mutator)
     return JSONResponse(result)
 
 

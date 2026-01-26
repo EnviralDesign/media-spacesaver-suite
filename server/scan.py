@@ -29,12 +29,14 @@ def probe_media(path, explicit_ffprobe=None):
         "-show_streams",
         str(path),
     ]
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    result = subprocess.run(cmd, capture_output=True)
     if result.returncode != 0:
         return {}
 
+    stdout = result.stdout or b""
     try:
-        data = json.loads(result.stdout)
+        text = stdout.decode("utf-8", errors="replace")
+        data = json.loads(text)
     except json.JSONDecodeError:
         return {}
 

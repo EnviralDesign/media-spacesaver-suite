@@ -49,6 +49,17 @@ def default_state():
         "items": [],
         "jobs": [],
         "workers": [],
+        "scanStatus": {
+            "active": False,
+            "entryId": None,
+            "entryName": None,
+            "total": 0,
+            "done": 0,
+            "currentPath": None,
+            "startedAt": None,
+            "updatedAt": None,
+            "finishedAt": None,
+        },
     }
 
 
@@ -82,6 +93,8 @@ def _read_state_no_lock():
     if "targetSamplesByHeight" not in config:
         config["targetSamplesByHeight"] = default_state()["config"]["targetSamplesByHeight"]
     state["config"] = config
+    if "scanStatus" not in state:
+        state["scanStatus"] = default_state()["scanStatus"]
 
     return state
 

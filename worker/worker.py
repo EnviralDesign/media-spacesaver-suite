@@ -40,12 +40,13 @@ def log(message):
     print(f"[{stamp}] {message}", flush=True)
 
 
-def load_config(path):
+def load_config(path, write_back=True):
     if not Path(path).exists():
         config = DEFAULT_CONFIG.copy()
         config = _ensure_worker_identity(config)
         config = _ensure_handbrake_path(config)
-        save_config(path, config)
+        if write_back:
+            save_config(path, config)
         return config
     with open(path, "r", encoding="utf-8") as f:
         data = json.load(f)
@@ -53,13 +54,49 @@ def load_config(path):
     merged.update(data or {})
     merged = _ensure_worker_identity(merged)
     merged = _ensure_handbrake_path(merged)
-    save_config(path, merged)
+    if write_back:
+        save_config(path, merged)
     return merged
 
 
 def save_config(path, config):
     with open(path, "w", encoding="utf-8") as f:
         json.dump(config, f, indent=2)
+
+
+def _config_mtime_ns(path):
+    try:
+        return Path(path).stat().st_mtime_ns
+    except FileNotFoundError:
+        return None
+
+
+def reload_config_if_changed(path, config, last_mtime_ns):
+    current_mtime_ns = _config_mtime_ns(path)
+    if current_mtime_ns is None:
+        return config, last_mtime_ns, False
+    if last_mtime_ns is not None and current_mtime_ns == last_mtime_ns:
+        return config, last_mtime_ns, False
+    try:
+        updated = load_config(path, write_back=False)
+    except Exception as exc:
+        log(f"Config reload failed: {exc}")
+        return config, last_mtime_ns, False
+    return updated, current_mtime_ns, True
+
+
+def format_work_hours(work_hours):
+    if not work_hours:
+        return "24/7"
+    pieces = []
+    for block in work_hours:
+        if not isinstance(block, dict):
+            continue
+        start = block.get("start")
+        end = block.get("end")
+        if start and end:
+            pieces.append(f"{start}-{end}")
+    return ", ".join(pieces) if pieces else "24/7"
 
 
 def _ensure_worker_identity(config):
@@ -253,9 +290,13 @@ def heartbeat(server_url, worker_id, worker_name):
         pass
 
 
-def heartbeat_loop(server_url, worker_id, worker_name, interval_sec=10):
+def heartbeat_loop(runtime, interval_sec=10):
     while True:
-        heartbeat(server_url, worker_id, worker_name)
+        server_url = runtime.get("server_url")
+        worker_id = runtime.get("worker_id")
+        worker_name = runtime.get("worker_name")
+        if server_url:
+            heartbeat(server_url, worker_id, worker_name)
         time.sleep(interval_sec)
 
 
@@ -711,6 +752,12 @@ def main():
     server_url = config["serverUrl"]
     worker_name = config.get("workerId") or config.get("name")
     worker_id = config.get("workerId") or None
+    runtime = {
+        "server_url": server_url,
+        "worker_name": worker_name,
+        "worker_id": worker_id,
+    }
+    last_config_mtime_ns = _config_mtime_ns(args.config)
     last_state = None
 
     log(f"Worker starting: {worker_name} ({worker_id}) -> {server_url}")
@@ -725,11 +772,25 @@ def main():
     if worker_id:
         threading.Thread(
             target=heartbeat_loop,
-            args=(server_url, worker_id, worker_name, 10),
+            args=(runtime, 10),
             daemon=True,
         ).start()
 
     while True:
+        config, last_config_mtime_ns, changed = reload_config_if_changed(args.config, config, last_config_mtime_ns)
+        if changed:
+            server_url = config["serverUrl"]
+            worker_name = config.get("workerId") or config.get("name")
+            worker_id = config.get("workerId") or None
+            runtime["server_url"] = server_url
+            runtime["worker_name"] = worker_name
+            runtime["worker_id"] = worker_id
+            log(
+                "Config reloaded: "
+                f"workHours={format_work_hours(config.get('workHours'))}, "
+                f"pollIntervalSec={config.get('pollIntervalSec', 10)}"
+            )
+
         if not within_work_hours(config.get("workHours")):
             write_status("idle")
             if last_state != "off-hours":

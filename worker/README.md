@@ -38,7 +38,7 @@ Edit `config.json`:
 - `uiHost`: UI bind host (use `0.0.0.0` for LAN access)
 - `uiPort`: UI port
 
-Changes via the UI require restarting the worker process to take effect.
+Config changes are auto-reloaded between polls (typically within the poll interval).
 
 ## CLI flags
 
