@@ -25,6 +25,15 @@ const alertsEl = document.getElementById("alerts");
 
 let currentSort = "savingsBytes";
 
+// Request debouncing - prevent overlapping requests
+const pendingRequests = {
+  workers: false,
+  jobs: false,
+  items: false,
+  scanStatus: false,
+  diagnostics: false,
+};
+
 async function fetchJson(url, options) {
   const res = await fetch(url, options);
   if (!res.ok) {
@@ -107,6 +116,8 @@ async function loadConfig() {
 
 async function loadDiagnostics() {
   if (!alertsEl) return;
+  if (pendingRequests.diagnostics) return;
+  pendingRequests.diagnostics = true;
   try {
     const diag = await fetchJson("/api/diagnostics");
     const warnings = [];
@@ -116,11 +127,15 @@ async function loadDiagnostics() {
     alertsEl.innerHTML = warnings.map((msg) => `<div class="alert warn">${msg}</div>`).join("");
   } catch (_) {
     alertsEl.innerHTML = "";
+  } finally {
+    pendingRequests.diagnostics = false;
   }
 }
 
 async function loadScanStatus() {
   if (!scanStatusEl) return;
+  if (pendingRequests.scanStatus) return;
+  pendingRequests.scanStatus = true;
   try {
     const scan = await fetchJson("/api/scan-status");
     if (!scan || !scan.active) {
@@ -134,6 +149,8 @@ async function loadScanStatus() {
     scanStatusEl.textContent = `Scan ${name}${done}/${total} (${pct}%)`;
   } catch (_) {
     scanStatusEl.textContent = "Scan: -";
+  } finally {
+    pendingRequests.scanStatus = false;
   }
 }
 
@@ -276,192 +293,135 @@ async function deleteItem(itemId) {
 }
 
 async function loadItems() {
-  const items = await fetchJson(`/api/items?sort=${currentSort}`);
-  itemsEl.innerHTML = "";
-  if (!items.length) {
-    itemsEl.innerHTML = "<tr><td colspan=\"10\" class=\"hint\">No items scanned. Click Scan on an entry.</td></tr>";
-    return;
+  if (pendingRequests.items) return;
+  pendingRequests.items = true;
+  try {
+    const items = await fetchJson(`/api/items?sort=${currentSort}`);
+    itemsEl.innerHTML = "";
+    if (!items.length) {
+      itemsEl.innerHTML = "<tr><td colspan=\"10\" class=\"hint\">No items scanned. Click Scan on an entry.</td></tr>";
+      return;
+    }
+
+    items.forEach((item) => {
+      const ratio = item.ratio || {};
+      const row = document.createElement("tr");
+      row.innerHTML = `
+        <td data-label="Ready"><input type="checkbox" data-ready="${item.id}" ${item.ready ? "checked" : ""} /></td>
+        <td data-label="Status">${badgeFor(item.status)}</td>
+        <td data-label="Tagged">${item.encodedBySpacesaver ? `<span class="badge tag">MS</span>` : "-"}</td>
+        <td data-label="Path" title="${item.path}">${item.path}</td>
+        <td data-label="Size">${formatBytes(item.sizeBytes)}</td>
+        <td data-label="Duration">${formatDuration(item.durationSec)}</td>
+        <td data-label="Res">${item.width || 0}x${item.height || 0}</td>
+        <td data-label="Savings">${formatBytes(ratio.savingsBytes || 0)}</td>
+        <td data-label="%">${((ratio.savingsPct || 0) * 100).toFixed(1)}%</td>
+        <td data-label="Actions">
+          <div class="row-actions">
+            <button class="btn ghost" data-reset="${item.id}">Reset</button>
+            <button class="btn danger" data-delete="${item.id}">✕</button>
+          </div>
+        </td>
+      `;
+      itemsEl.appendChild(row);
+    });
+  } finally {
+    pendingRequests.items = false;
   }
-
-  items.forEach((item) => {
-    const ratio = item.ratio || {};
-    const row = document.createElement("tr");
-    row.innerHTML = `
-      <td data-label="Ready"><input type="checkbox" data-ready="${item.id}" ${item.ready ? "checked" : ""} /></td>
-      <td data-label="Status">${badgeFor(item.status)}</td>
-      <td data-label="Tagged">${item.encodedBySpacesaver ? `<span class="badge tag">MS</span>` : "-"}</td>
-      <td data-label="Path" title="${item.path}">${item.path}</td>
-      <td data-label="Size">${formatBytes(item.sizeBytes)}</td>
-      <td data-label="Duration">${formatDuration(item.durationSec)}</td>
-      <td data-label="Res">${item.width || 0}x${item.height || 0}</td>
-      <td data-label="Savings">${formatBytes(ratio.savingsBytes || 0)}</td>
-      <td data-label="%">${((ratio.savingsPct || 0) * 100).toFixed(1)}%</td>
-      <td data-label="Actions">
-        <div class="row-actions">
-          <button class="btn ghost" data-reset="${item.id}">Reset</button>
-          <button class="btn danger" data-delete="${item.id}">✕</button>
-        </div>
-      </td>
-    `;
-    itemsEl.appendChild(row);
-  });
-
-  itemsEl.querySelectorAll("input[data-ready]").forEach((input) => {
-    input.addEventListener("change", async () => {
-      const itemId = input.getAttribute("data-ready");
-      setStatus("Updating...");
-      try {
-        await toggleReady(itemId, input.checked);
-        await loadItems();
-        setStatus("Updated");
-      } catch (err) {
-        setStatus(err.message || "Failed to update");
-      }
-    });
-  });
-
-  itemsEl.querySelectorAll("button[data-reset]").forEach((btn) => {
-    btn.addEventListener("click", async () => {
-      const itemId = btn.getAttribute("data-reset");
-      setStatus("Resetting...");
-      try {
-        await resetItem(itemId);
-        await loadItems();
-        setStatus("Reset");
-      } catch (err) {
-        setStatus(err.message || "Failed to reset");
-      }
-    });
-  });
-
-  itemsEl.querySelectorAll("button[data-delete]").forEach((btn) => {
-    btn.addEventListener("click", async () => {
-      const itemId = btn.getAttribute("data-delete");
-      setStatus("Removing...");
-      try {
-        await deleteItem(itemId);
-        await loadItems();
-        setStatus("Removed");
-      } catch (err) {
-        setStatus(err.message || "Failed to remove");
-      }
-    });
-  });
 }
 
 async function loadWorkers() {
-  const workers = await fetchJson("/api/workers");
-  workersEl.innerHTML = "";
-  if (!workers.length) {
-    workersEl.innerHTML = "<div class=\"hint\">No workers yet.</div>";
-    return;
-  }
-
-  workers.forEach((worker) => {
-    const mins = minutesSince(worker.lastHeartbeatAt);
-    const online = mins !== null && mins <= 2;
-    const withinHours = worker.withinWorkHours !== false;
-    const age = mins === null ? "never" : `${mins.toFixed(1)}m ago`;
-
-    // Determine status: online+inHours = "online", online+outOfHours = "idle", not online = "offline"
-    let statusClass = "";
-    let statusLabel = "offline";
-    if (online) {
-      if (withinHours) {
-        statusClass = "online";
-        statusLabel = "online";
-      } else {
-        statusClass = "idle";
-        statusLabel = "idle (off-hours)";
-      }
+  if (pendingRequests.workers) return;
+  pendingRequests.workers = true;
+  try {
+    const workers = await fetchJson("/api/workers");
+    workersEl.innerHTML = "";
+    if (!workers.length) {
+      workersEl.innerHTML = "<div class=\"hint\">No workers yet.</div>";
+      return;
     }
 
-    const card = document.createElement("div");
-    card.className = "entry";
-    card.innerHTML = `
-      <h4>${worker.name}</h4>
-      <div class="path">${worker.id}</div>
-      <div class="row">
-        <div class="worker-status"><span class="dot ${statusClass}"></span>${statusLabel} (${age})</div>
-        <button class="btn danger" data-worker-delete="${worker.id}">✕</button>
-      </div>
-    `;
-    workersEl.appendChild(card);
-  });
+    workers.forEach((worker) => {
+      const mins = minutesSince(worker.lastHeartbeatAt);
+      const online = mins !== null && mins <= 2;
+      const withinHours = worker.withinWorkHours !== false;
+      const age = mins === null ? "never" : `${mins.toFixed(1)}m ago`;
 
-  workersEl.querySelectorAll("button[data-worker-delete]").forEach((btn) => {
-    btn.addEventListener("click", async () => {
-      const workerId = btn.getAttribute("data-worker-delete");
-      setStatus("Removing worker...");
-      try {
-        await fetchJson(`/api/workers/${workerId}`, { method: "DELETE" });
-        await loadWorkers();
-        setStatus("Worker removed");
-      } catch (err) {
-        setStatus(err.message || "Failed to remove worker");
+      // Determine status: online+inHours = "online", online+outOfHours = "idle", not online = "offline"
+      let statusClass = "";
+      let statusLabel = "offline";
+      if (online) {
+        if (withinHours) {
+          statusClass = "online";
+          statusLabel = "online";
+        } else {
+          statusClass = "idle";
+          statusLabel = "idle (off-hours)";
+        }
       }
+
+      const card = document.createElement("div");
+      card.className = "entry";
+      card.innerHTML = `
+        <h4>${worker.name}</h4>
+        <div class="path">${worker.id}</div>
+        <div class="row">
+          <div class="worker-status"><span class="dot ${statusClass}"></span>${statusLabel} (${age})</div>
+          <button class="btn danger" data-worker-delete="${worker.id}">✕</button>
+        </div>
+      `;
+      workersEl.appendChild(card);
     });
-  });
+  } finally {
+    pendingRequests.workers = false;
+  }
 }
 
 async function loadJobs() {
-  const jobs = await fetchJson("/api/jobs");
-  jobsEl.innerHTML = "";
-  if (!jobs.length) {
-    jobsEl.innerHTML = "<tr><td colspan=\"11\" class=\"hint\">No jobs yet.</td></tr>";
-    return;
-  }
-
-  const sorted = jobs.slice().sort((a, b) => {
-    const at = new Date(a.claimedAt || 0).getTime();
-    const bt = new Date(b.claimedAt || 0).getTime();
-    return bt - at;
-  });
-
-  sorted.forEach((job) => {
-    const pct = job.progress && job.progress.pct !== undefined ? `${job.progress.pct}%` : "-";
-    let msg = job.progress && job.progress.logTail ? job.progress.logTail : "-";
-    const eta = job.progress && job.progress.etaSec !== undefined ? formatEta(job.progress.etaSec) : "-";
-    if (job.cancelRequested) {
-      msg = "Cancel requested";
+  if (pendingRequests.jobs) return;
+  pendingRequests.jobs = true;
+  try {
+    const jobs = await fetchJson("/api/jobs");
+    jobsEl.innerHTML = "";
+    if (!jobs.length) {
+      jobsEl.innerHTML = "<tr><td colspan=\"11\" class=\"hint\">No jobs yet.</td></tr>";
+      return;
     }
-    const row = document.createElement("tr");
-    row.innerHTML = `
-      <td data-label="Status">${badgeForJob(job)}</td>
-      <td data-label="Progress">${pct}</td>
-      <td data-label="ETA">${eta}</td>
-      <td data-label="Worker">${job.workerName || job.workerId || "-"}</td>
-      <td data-label="Item" title="${job.itemPath || job.itemId || ""}">${job.itemPath || job.itemId || "-"}</td>
-      <td data-label="Claimed">${formatTimestamp(job.claimedAt)}</td>
-      <td data-label="Started">${formatTimestamp(job.startedAt)}</td>
-      <td data-label="Finished">${formatTimestamp(job.finishedAt)}</td>
-      <td data-label="Message" class="message-cell" title="${msg}">${msg}</td>
-      <td data-label="Error" class="error-cell">${job.error || "-"}</td>
-      <td data-label="Actions">
-        <button class="btn danger" data-job-delete="${job.id}">✕</button>
-      </td>
-    `;
-    jobsEl.appendChild(row);
-  });
 
-  jobsEl.querySelectorAll("button[data-job-delete]").forEach((btn) => {
-    btn.addEventListener("click", async () => {
-      const jobId = btn.getAttribute("data-job-delete");
-      setStatus("Removing job...");
-      try {
-        const result = await fetchJson(`/api/jobs/${jobId}`, { method: "DELETE" });
-        if (result.cancelRequested) {
-          setStatus("Cancel requested");
-          await loadJobs();
-          return;
-        }
-        await loadJobs();
-        setStatus("Removed");
-      } catch (err) {
-        setStatus(err.message || "Failed to remove job");
-      }
+    const sorted = jobs.slice().sort((a, b) => {
+      const at = new Date(a.claimedAt || 0).getTime();
+      const bt = new Date(b.claimedAt || 0).getTime();
+      return bt - at;
     });
-  });
+
+    sorted.forEach((job) => {
+      const pct = job.progress && job.progress.pct !== undefined ? `${job.progress.pct}%` : "-";
+      let msg = job.progress && job.progress.logTail ? job.progress.logTail : "-";
+      const eta = job.progress && job.progress.etaSec !== undefined ? formatEta(job.progress.etaSec) : "-";
+      if (job.cancelRequested) {
+        msg = "Cancel requested";
+      }
+      const row = document.createElement("tr");
+      row.innerHTML = `
+        <td data-label="Status">${badgeForJob(job)}</td>
+        <td data-label="Progress">${pct}</td>
+        <td data-label="ETA">${eta}</td>
+        <td data-label="Worker">${job.workerName || job.workerId || "-"}</td>
+        <td data-label="Item" title="${job.itemPath || job.itemId || ""}">${job.itemPath || job.itemId || "-"}</td>
+        <td data-label="Claimed">${formatTimestamp(job.claimedAt)}</td>
+        <td data-label="Started">${formatTimestamp(job.startedAt)}</td>
+        <td data-label="Finished">${formatTimestamp(job.finishedAt)}</td>
+        <td data-label="Message" class="message-cell" title="${msg}">${msg}</td>
+        <td data-label="Error" class="error-cell">${job.error || "-"}</td>
+        <td data-label="Actions">
+          <button class="btn danger" data-job-delete="${job.id}">✕</button>
+        </td>
+      `;
+      jobsEl.appendChild(row);
+    });
+  } finally {
+    pendingRequests.jobs = false;
+  }
 }
 
 function setupTabs(container, storageKey) {
@@ -544,6 +504,86 @@ clearTargetSamplesBtn.addEventListener("click", async () => {
     configStatusEl.textContent = "Target table reset";
   } catch (err) {
     configStatusEl.textContent = err.message || "Failed to reset target table";
+  }
+});
+
+// Event delegation - attach once, handle dynamically created elements
+// This prevents memory leaks from repeatedly attaching listeners on each refresh
+
+itemsEl.addEventListener("change", async (e) => {
+  const input = e.target.closest("input[data-ready]");
+  if (!input) return;
+  const itemId = input.getAttribute("data-ready");
+  setStatus("Updating...");
+  try {
+    await toggleReady(itemId, input.checked);
+    await loadItems();
+    setStatus("Updated");
+  } catch (err) {
+    setStatus(err.message || "Failed to update");
+  }
+});
+
+itemsEl.addEventListener("click", async (e) => {
+  const resetBtn = e.target.closest("button[data-reset]");
+  if (resetBtn) {
+    const itemId = resetBtn.getAttribute("data-reset");
+    setStatus("Resetting...");
+    try {
+      await resetItem(itemId);
+      await loadItems();
+      setStatus("Reset");
+    } catch (err) {
+      setStatus(err.message || "Failed to reset");
+    }
+    return;
+  }
+
+  const deleteBtn = e.target.closest("button[data-delete]");
+  if (deleteBtn) {
+    const itemId = deleteBtn.getAttribute("data-delete");
+    setStatus("Removing...");
+    try {
+      await deleteItem(itemId);
+      await loadItems();
+      setStatus("Removed");
+    } catch (err) {
+      setStatus(err.message || "Failed to remove");
+    }
+    return;
+  }
+});
+
+workersEl.addEventListener("click", async (e) => {
+  const btn = e.target.closest("button[data-worker-delete]");
+  if (!btn) return;
+  const workerId = btn.getAttribute("data-worker-delete");
+  setStatus("Removing worker...");
+  try {
+    await fetchJson(`/api/workers/${workerId}`, { method: "DELETE" });
+    await loadWorkers();
+    setStatus("Worker removed");
+  } catch (err) {
+    setStatus(err.message || "Failed to remove worker");
+  }
+});
+
+jobsEl.addEventListener("click", async (e) => {
+  const btn = e.target.closest("button[data-job-delete]");
+  if (!btn) return;
+  const jobId = btn.getAttribute("data-job-delete");
+  setStatus("Removing job...");
+  try {
+    const result = await fetchJson(`/api/jobs/${jobId}`, { method: "DELETE" });
+    if (result.cancelRequested) {
+      setStatus("Cancel requested");
+      await loadJobs();
+      return;
+    }
+    await loadJobs();
+    setStatus("Removed");
+  } catch (err) {
+    setStatus(err.message || "Failed to remove job");
   }
 });
 

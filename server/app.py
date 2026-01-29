@@ -103,6 +103,55 @@ def cleanup_stale_jobs(state, max_age_sec=180, worker_grace_sec=120):
     return updated
 
 
+def prune_old_jobs(state, max_age_hours=24, max_jobs=100):
+    """Remove old completed/failed jobs to prevent unbounded growth.
+    
+    Keeps jobs that are:
+    - Active (claimed/running)
+    - Completed/failed within the last max_age_hours
+    - Up to max_jobs most recent completed/failed jobs
+    """
+    now = datetime.now(timezone.utc)
+    jobs = state.get("jobs") or []
+    if len(jobs) <= max_jobs:
+        return False
+    
+    max_age_sec = max_age_hours * 3600
+    active = []
+    finished = []
+    
+    for job in jobs:
+        status = job.get("status")
+        if status in {"claimed", "running"}:
+            active.append(job)
+        else:
+            finished.append(job)
+    
+    # Sort finished jobs by finished time (newest first)
+    def get_finished_time(job):
+        t = _parse_iso(job.get("finishedAt")) or _parse_iso(job.get("claimedAt"))
+        return t or datetime.min.replace(tzinfo=timezone.utc)
+    
+    finished.sort(key=get_finished_time, reverse=True)
+    
+    # Keep recent finished jobs (within max_age_hours)
+    kept_finished = []
+    for job in finished:
+        finished_at = get_finished_time(job)
+        age = (now - finished_at).total_seconds()
+        if age < max_age_sec and len(kept_finished) < max_jobs:
+            kept_finished.append(job)
+        elif len(kept_finished) < max_jobs // 2:
+            # Keep at least some history even if old
+            kept_finished.append(job)
+    
+    new_jobs = active + kept_finished
+    if len(new_jobs) < len(jobs):
+        state["jobs"] = new_jobs
+        return True
+    return False
+
+
 @app.get("/")
 def index():
     return FileResponse(Path(__file__).resolve().parent / "static" / "index.html")
@@ -443,6 +492,7 @@ def scan_entry(entry_id: str):
 def list_items(entryId: str | None = None, sort: str | None = None):
     def mutator(state):
         cleanup_stale_jobs(state)
+        prune_old_jobs(state)
         return state
 
     state = update_state(mutator)
@@ -598,6 +648,7 @@ def claim_job(payload: ClaimRequest):
 def list_jobs():
     def mutator(state):
         cleanup_stale_jobs(state)
+        prune_old_jobs(state)
         return state
 
     state = update_state(mutator)
