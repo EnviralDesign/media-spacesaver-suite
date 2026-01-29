@@ -11,6 +11,10 @@ import math
 from state import load_state, now_iso, new_id, update_state, default_state
 from scan import compute_ratio, list_media_files, probe_media, ffprobe_path
 
+def log(message):
+    stamp = datetime.now().strftime("%H:%M:%S")
+    print(f"[{stamp}] {message}", flush=True)
+
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
@@ -855,5 +859,15 @@ def job_fail(job_id: str, payload: JobUpdate):
 
 if __name__ == "__main__":
     import uvicorn
-
-    uvicorn.run("app:app", host="0.0.0.0", port=8856, reload=True, log_level="warning", access_log=False)
+    host = "0.0.0.0"
+    port = 8856
+    log("Server starting...")
+    log(f"UI listening on http://{host}:{port}")
+    uvicorn.run(
+        "app:app",
+        host=host,
+        port=port,
+        reload=True,
+        log_level="warning",
+        access_log=False,
+    )
