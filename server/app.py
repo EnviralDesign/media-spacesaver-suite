@@ -140,6 +140,8 @@ class JobProgress(BaseModel):
 class WorkerHeartbeat(BaseModel):
     workerId: str
     workerName: str | None = None
+    workHours: list | None = None
+    withinWorkHours: bool | None = None
 
 
 class EntryUpdate(BaseModel):
@@ -733,7 +735,8 @@ def worker_heartbeat(payload: WorkerHeartbeat):
                 "name": payload.workerName or "worker",
                 "status": "online",
                 "lastHeartbeatAt": now_iso(),
-                "workHours": [],
+                "workHours": payload.workHours or [],
+                "withinWorkHours": payload.withinWorkHours if payload.withinWorkHours is not None else True,
             }
             workers.append(worker)
         else:
@@ -741,6 +744,10 @@ def worker_heartbeat(payload: WorkerHeartbeat):
                 worker["name"] = payload.workerName
             worker["status"] = "online"
             worker["lastHeartbeatAt"] = now_iso()
+            if payload.workHours is not None:
+                worker["workHours"] = payload.workHours
+            if payload.withinWorkHours is not None:
+                worker["withinWorkHours"] = payload.withinWorkHours
         state["workers"] = workers
         return worker
 

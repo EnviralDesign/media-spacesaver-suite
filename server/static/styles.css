@@ -331,6 +331,11 @@ textarea {
   box-shadow: 0 0 0 3px rgba(77, 155, 112, 0.2);
 }
 
+.dot.idle {
+  background: #c9a227;
+  box-shadow: 0 0 0 3px rgba(201, 162, 39, 0.2);
+}
+
 .entry {
   border: 1px solid var(--line);
   border-radius: 12px;
@@ -469,8 +474,6 @@ textarea {
 }
 
 .entries-panel {
-  display: flex;
-  flex-direction: column;
   min-height: 0;
 }
 

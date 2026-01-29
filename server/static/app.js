@@ -360,14 +360,29 @@ async function loadWorkers() {
   workers.forEach((worker) => {
     const mins = minutesSince(worker.lastHeartbeatAt);
     const online = mins !== null && mins <= 2;
+    const withinHours = worker.withinWorkHours !== false;
     const age = mins === null ? "never" : `${mins.toFixed(1)}m ago`;
+
+    // Determine status: online+inHours = "online", online+outOfHours = "idle", not online = "offline"
+    let statusClass = "";
+    let statusLabel = "offline";
+    if (online) {
+      if (withinHours) {
+        statusClass = "online";
+        statusLabel = "online";
+      } else {
+        statusClass = "idle";
+        statusLabel = "idle (off-hours)";
+      }
+    }
+
     const card = document.createElement("div");
     card.className = "entry";
     card.innerHTML = `
       <h4>${worker.name}</h4>
       <div class="path">${worker.id}</div>
       <div class="row">
-        <div class="worker-status"><span class="dot ${online ? "online" : ""}"></span>${online ? "online" : "offline"} (${age})</div>
+        <div class="worker-status"><span class="dot ${statusClass}"></span>${statusLabel} (${age})</div>
         <button class="btn danger" data-worker-delete="${worker.id}">✕</button>
       </div>
     `;

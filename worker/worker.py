@@ -280,10 +280,15 @@ def claim_job(server_url, worker_name, worker_id):
     return resp.json()
 
 
-def heartbeat(server_url, worker_id, worker_name):
+def heartbeat(server_url, worker_id, worker_name, work_hours=None):
     if not worker_id:
         return
-    payload = {"workerId": worker_id, "workerName": worker_name}
+    payload = {
+        "workerId": worker_id,
+        "workerName": worker_name,
+        "workHours": work_hours or [],
+        "withinWorkHours": within_work_hours(work_hours),
+    }
     try:
         requests.post(f"{server_url}/api/workers/heartbeat", json=payload, timeout=30)
     except requests.RequestException:
@@ -295,8 +300,9 @@ def heartbeat_loop(runtime, interval_sec=10):
         server_url = runtime.get("server_url")
         worker_id = runtime.get("worker_id")
         worker_name = runtime.get("worker_name")
+        work_hours = runtime.get("work_hours")
         if server_url:
-            heartbeat(server_url, worker_id, worker_name)
+            heartbeat(server_url, worker_id, worker_name, work_hours)
         time.sleep(interval_sec)
 
 
@@ -756,6 +762,7 @@ def main():
         "server_url": server_url,
         "worker_name": worker_name,
         "worker_id": worker_id,
+        "work_hours": config.get("workHours"),
     }
     last_config_mtime_ns = _config_mtime_ns(args.config)
     last_state = None
@@ -785,6 +792,7 @@ def main():
             runtime["server_url"] = server_url
             runtime["worker_name"] = worker_name
             runtime["worker_id"] = worker_id
+            runtime["work_hours"] = config.get("workHours")
             log(
                 "Config reloaded: "
                 f"workHours={format_work_hours(config.get('workHours'))}, "
