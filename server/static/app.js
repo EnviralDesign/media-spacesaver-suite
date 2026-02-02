@@ -222,37 +222,6 @@ function renderEntries(entries) {
     `;
     entriesEl.appendChild(card);
   });
-
-  entriesEl.querySelectorAll("button[data-scan]").forEach((btn) => {
-    btn.addEventListener("click", async () => {
-      const entryId = btn.getAttribute("data-scan");
-      setStatus("Scanning...");
-      try {
-        await fetchJson(`/api/entries/${entryId}/scan`, { method: "POST" });
-        await loadEntries();
-        await loadItems();
-        setStatus("Scan complete");
-      } catch (err) {
-        setStatus(err.message || "Scan failed");
-      }
-    });
-  });
-
-  entriesEl.querySelectorAll("button[data-delete-entry]").forEach((btn) => {
-    btn.addEventListener("click", async () => {
-      const entryId = btn.getAttribute("data-delete-entry");
-      setStatus("Removing entry...");
-      try {
-        await deleteEntry(entryId);
-        await loadEntries();
-        await loadItems();
-        await loadJobs();
-        setStatus("Entry removed");
-      } catch (err) {
-        setStatus(err.message || "Failed to remove entry");
-      }
-    });
-  });
 }
 
 async function loadEntries() {
@@ -509,6 +478,39 @@ clearTargetSamplesBtn.addEventListener("click", async () => {
 
 // Event delegation - attach once, handle dynamically created elements
 // This prevents memory leaks from repeatedly attaching listeners on each refresh
+
+entriesEl.addEventListener("click", async (e) => {
+  const scanBtn = e.target.closest("button[data-scan]");
+  if (scanBtn) {
+    const entryId = scanBtn.getAttribute("data-scan");
+    setStatus("Scanning...");
+    try {
+      await fetchJson(`/api/entries/${entryId}/scan`, { method: "POST" });
+      await loadEntries();
+      await loadItems();
+      setStatus("Scan complete");
+    } catch (err) {
+      setStatus(err.message || "Scan failed");
+    }
+    return;
+  }
+
+  const deleteBtn = e.target.closest("button[data-delete-entry]");
+  if (deleteBtn) {
+    const entryId = deleteBtn.getAttribute("data-delete-entry");
+    setStatus("Removing entry...");
+    try {
+      await deleteEntry(entryId);
+      await loadEntries();
+      await loadItems();
+      await loadJobs();
+      setStatus("Entry removed");
+    } catch (err) {
+      setStatus(err.message || "Failed to remove entry");
+    }
+    return;
+  }
+});
 
 itemsEl.addEventListener("change", async (e) => {
   const input = e.target.closest("input[data-ready]");
