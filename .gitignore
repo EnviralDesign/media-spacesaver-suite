@@ -12,6 +12,7 @@
 /worker/status.json
 /worker/config.json
 /tools/compare/config.json
+/tools/procman/processes.json
 
 *__pycache__*
 
